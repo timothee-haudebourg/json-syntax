@@ -1,155 +1,224 @@
-use generic_json::{Json, ValueRef, ValueMut};
-use json_number::NumberBuf;
-use std::{
-	borrow::{Borrow, BorrowMut},
-	ops::{Deref, DerefMut},
-	cmp::Ordering,
-	collections::BTreeMap
-};
+//! This library provides a strict JSON parser as defined by
+//! [RFC 8259](https://datatracker.ietf.org/doc/html/rfc8259) and
+//! [ECMA-404](https://www.ecma-international.org/publications-and-standards/standards/ecma-404/).
+//! It is built on the [`locspan`](https://crates.io/crates/locspan) library
+//! so as to keep track of the position of each JSON value in the parsed
+//! document.
+//!
+//! # Features
+//!
+//! - Strict implementation of [RFC 8259](https://datatracker.ietf.org/doc/html/rfc8259) and
+//!   [ECMA-404](https://www.ecma-international.org/publications-and-standards/standards/ecma-404/).
+//! - No stack overflow, your memory is the limit.
+//! - Numbers are stored in lexical form thanks to the [`json-number`](https://crates.io/crates/json-number) crate,
+//!   their precision is not limited.
+//! - Duplicate values are preserved. A JSON object is just a list of entries,
+//!   in the order of definition.
+//! - Strings are stored on the stack whenever possible, thanks to the [`smallstr`](https://crates.io/crates/smallstr) crate.
+//! - The parser is configurable to accept documents that do not strictly
+//!   adhere to the standard.
+//! - Thoroughly tested.
+//!
+//! # Usage
+//!
+//! ```
+//! use std::fs;
+//! use json_syntax::{Value, Parse};
+//! use decoded_char::DecodedChars;
+//! use locspan::Loc;
+//!
+//! fn infallible<T>(t: T) -> Result<T, std::convert::Infallible> {
+//!   Ok(t)
+//! }
+//!
+//! let filename = "tests/inputs/y_structure_500_nested_arrays.json";
+//! let input = fs::read_to_string(filename).unwrap();
+//! let Loc(value, value_location) = Value::parse(filename, input.decoded_chars().map(infallible)).expect("parse error");
+//!
+//! // ...
+//! ```
+use json_number::Number;
+use locspan::Loc;
 
 pub mod parse;
+pub use parse::Parse;
 
+/// String stack capacity.
+///
+/// If a string is longer than this value,
+/// it will be stored on the heap.
 const SMALL_STRING_CAPACITY: usize = 16;
-type SmallString = smallstr::SmallString<[u8; SMALL_STRING_CAPACITY]>;
 
-/// JSON value.
-pub struct Value<M = source_span::Span> {
-	value: generic_json::Value<Self>,
-	metadata: M,
+/// String.
+pub type String = smallstr::SmallString<[u8; SMALL_STRING_CAPACITY]>;
+
+/// Array.
+pub type Array<S, P = locspan::Span> = Vec<Loc<Value<S, P>, S, P>>;
+
+/// Object entry.
+#[derive(Debug)]
+pub struct Entry<S, P = locspan::Span> {
+	pub key: Loc<Key, S, P>,
+	pub value: Loc<Value<S, P>, S, P>,
 }
 
-impl<M> Value<M> {
-	pub fn metadata(&self) -> &M {
-		&self.metadata
-	}
-
-	pub fn metadata_mut(&mut self) -> &mut M {
-		&mut self.metadata
-	}
-}
-
-impl<M> Deref for Value<M> {
-	type Target = generic_json::Value<Self>;
-
-	fn deref(&self) -> &Self::Target {
-		&self.value
+impl<S, P> Entry<S, P> {
+	pub fn new(key: Loc<Key, S, P>, value: Loc<Value<S, P>, S, P>) -> Self {
+		Self { key, value }
 	}
 }
 
-impl<M> DerefMut for Value<M> {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.value
-	}
+/// Object key stack capacity.
+///
+/// If the key is longer than this value,
+/// it will be stored on the heap.
+const KEY_CAPACITY: usize = 16;
+
+/// Object key.
+pub type Key = smallstr::SmallString<[u8; KEY_CAPACITY]>;
+
+/// Object.
+pub type Object<S, P = locspan::Span> = Vec<Entry<S, P>>;
+
+/// Number buffer stack capacity.
+///
+/// If the number is longer than this value,
+/// it will be stored on the heap.
+const NUMBER_CAPACITY: usize = SMALL_STRING_CAPACITY;
+
+/// Number buffer.
+pub type NumberBuf = json_number::SmallNumberBuf<NUMBER_CAPACITY>;
+
+/// Value.
+#[derive(Debug)]
+pub enum Value<S, P = locspan::Span> {
+	/// `null`.
+	Null,
+
+	/// Boolean `true` or `false`.
+	Boolean(bool),
+
+	/// Number.
+	Number(NumberBuf),
+
+	/// String.
+	String(String),
+
+	/// Array.
+	Array(Array<S, P>),
+
+	/// Object.
+	Object(Object<S, P>),
 }
 
-impl<M> Borrow<generic_json::Value<Self>> for Value<M> {
-	fn borrow(&self) -> &generic_json::Value<Self> {
-		&self.value
-	}
-}
-
-impl<M> BorrowMut<generic_json::Value<Self>> for Value<M> {
-	fn borrow_mut(&mut self) -> &mut generic_json::Value<Self> {
-		&mut self.value
-	}
-}
-
-pub struct Key<M = source_span::Span> {
-	key: SmallString,
-	metadata: M
-}
-
-impl<M> Key<M> {
-	pub fn metadata(&self) -> &M {
-		&self.metadata
+impl<S, P> Value<S, P> {
+	#[inline]
+	pub fn is_null(&self) -> bool {
+		matches!(self, Self::Null)
 	}
 
-	pub fn metadata_mut(&mut self) -> &mut M {
-		&mut self.metadata
+	#[inline]
+	pub fn is_boolean(&self) -> bool {
+		matches!(self, Self::Boolean(_))
 	}
-}
 
-impl<M> AsRef<str> for Key<M> {
-	fn as_ref(&self) -> &str {
-		self.key.as_ref()
+	#[inline]
+	pub fn is_number(&self) -> bool {
+		matches!(self, Self::Number(_))
 	}
-}
 
-impl<M> PartialEq for Key<M> {
-	fn eq(&self, other: &Self) -> bool {
-		self.key == other.key
+	#[inline]
+	pub fn is_string(&self) -> bool {
+		matches!(self, Self::String(_))
 	}
-}
 
-impl<M> Eq for Key<M> {}
-
-impl<M> PartialOrd for Key<M> {
-	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		self.key.partial_cmp(&other.key)
+	#[inline]
+	pub fn is_array(&self) -> bool {
+		matches!(self, Self::Array(_))
 	}
-}
 
-impl<M> Ord for Key<M> {
-	fn cmp(&self, other: &Self) -> Ordering {
-		self.key.cmp(&other.key)
+	#[inline]
+	pub fn is_object(&self) -> bool {
+		matches!(self, Self::Object(_))
 	}
-}
 
-impl<M> Borrow<str> for Key<M> {
-	fn borrow(&self) -> &str {
-		self.key.as_ref()
-	}
-}
-
-impl<M> Json for Value<M> {
-	/// Metadata type attached to each value.
-	type MetaData = M;
-
-	/// Literal number type.
-	type Number = NumberBuf;
-
-	/// String type.
-	type String = SmallString;
-
-	/// Array type.
-	type Array = Vec<Self>;
-
-	/// Object key type.
-	type Key = Key<M>;
-
-	/// Object type.
-	type Object = BTreeMap<Key<M>, Self>;
-
-	/// Creates a new "meta value" from a `Value` and its associated metadata.
-	fn new(value: generic_json::Value<Self>, metadata: Self::MetaData) -> Self {
-		Self {
-			value,
-			metadata
+	#[inline]
+	pub fn as_boolean(&self) -> Option<bool> {
+		match self {
+			Self::Boolean(b) => Some(*b),
+			_ => None,
 		}
 	}
 
-	/// Returns a reference to the actual JSON value (without the metadata).
-	fn as_value_ref(&self) -> ValueRef<'_, Self> {
-		self.value.as_value_ref()
+	#[inline]
+	pub fn as_boolean_mut(&mut self) -> Option<&mut bool> {
+		match self {
+			Self::Boolean(b) => Some(b),
+			_ => None,
+		}
 	}
 
-	/// Returns a mutable reference to the actual JSON value (without the metadata).
-	fn as_value_mut(&mut self) -> ValueMut<'_, Self> {
-		self.value.as_value_mut()
+	#[inline]
+	pub fn as_number(&self) -> Option<&Number> {
+		match self {
+			Self::Number(n) => Some(n),
+			_ => None,
+		}
 	}
 
-	/// Returns a reference to the metadata associated to the JSON value.
-	fn metadata(&self) -> &Self::MetaData {
-		&self.metadata
+	#[inline]
+	pub fn as_number_mut(&mut self) -> Option<&mut NumberBuf> {
+		match self {
+			Self::Number(n) => Some(n),
+			_ => None,
+		}
 	}
 
-	/// Returns a pair containing a reference to the JSON value and a reference to its metadata.
-	fn as_pair(&self) -> (ValueRef<'_, Self>, &Self::MetaData) {
-		(self.value.as_value_ref(), &self.metadata)
+	#[inline]
+	pub fn as_string(&self) -> Option<&str> {
+		match self {
+			Self::String(s) => Some(s),
+			_ => None,
+		}
 	}
 
-	/// Returns a pair containing a mutable reference to the JSON value and a reference to its metadata.
-	fn as_pair_mut(&mut self) -> (ValueMut<'_, Self>, &Self::MetaData) {
-		(self.value.as_value_mut(), &self.metadata)
+	#[inline]
+	pub fn as_string_mut(&mut self) -> Option<&mut String> {
+		match self {
+			Self::String(s) => Some(s),
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn as_array(&self) -> Option<&[Loc<Self, S, P>]> {
+		match self {
+			Self::Array(a) => Some(a),
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn as_array_mut(&mut self) -> Option<&mut Array<S, P>> {
+		match self {
+			Self::Array(a) => Some(a),
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn as_object(&self) -> Option<&Object<S, P>> {
+		match self {
+			Self::Object(o) => Some(o),
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn as_object_mut(&mut self) -> Option<&mut Object<S, P>> {
+		match self {
+			Self::Object(o) => Some(o),
+			_ => None,
+		}
 	}
 }

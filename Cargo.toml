@@ -1,13 +1,20 @@
 [package]
 name = "json-syntax"
 version = "0.1.0"
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+edition = "2021"
+authors = ["Timothée Haudebourg <author@haudebourg.net>"]
+description = "Strict JSON parsing and mapping library"
+categories = ["parsing", "data-structures"]
+keywords = ["parsing", "json", "rfc", "mapping"]
+repository = "https://github.com/timothee-haudebourg/json-syntax"
+documentation = "https://docs.rs/json-syntax"
+license = "MIT/Apache-2.0"
+readme = "README.md"
 
 [dependencies]
-cc-traits = { version = "*", features = ["smallvec"] }
-generic-json = { path = "../generic" }
-json-number = { path = "../number" }
-smallstr = "*"
-source-span = "*"
+json-number = { version = "0.1.0", features = [ "smallnumberbuf" ] }
+smallvec = "1.9.0"
+smallstr = "0.3.0"
+locspan = "0.5.2"
+indexmap = "1.9.1"
+decoded-char = "0.1.0"
