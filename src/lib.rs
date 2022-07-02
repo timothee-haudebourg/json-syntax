@@ -37,8 +37,9 @@
 //!
 //! // ...
 //! ```
-use json_number::Number;
+pub use json_number::Number;
 use locspan::Loc;
+use locspan_derive::*;
 
 pub mod parse;
 pub use parse::Parse;
@@ -56,8 +57,23 @@ pub type String = smallstr::SmallString<[u8; SMALL_STRING_CAPACITY]>;
 pub type Array<S, P = locspan::Span> = Vec<Loc<Value<S, P>, S, P>>;
 
 /// Object entry.
-#[derive(Debug)]
+#[derive(
+	Clone,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+	Debug,
+	StrippedPartialEq,
+	StrippedEq,
+	StrippedPartialOrd,
+	StrippedOrd,
+	StrippedHash,
+)]
+#[stripped_ignore(S, P)]
 pub struct Entry<S, P = locspan::Span> {
+	#[stripped_deref]
 	pub key: Loc<Key, S, P>,
 	pub value: Loc<Value<S, P>, S, P>,
 }
@@ -90,19 +106,33 @@ const NUMBER_CAPACITY: usize = SMALL_STRING_CAPACITY;
 pub type NumberBuf = json_number::SmallNumberBuf<NUMBER_CAPACITY>;
 
 /// Value.
-#[derive(Debug)]
+#[derive(
+	Clone,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+	Debug,
+	StrippedPartialEq,
+	StrippedEq,
+	StrippedPartialOrd,
+	StrippedOrd,
+	StrippedHash,
+)]
+#[stripped_ignore(S, P)]
 pub enum Value<S, P = locspan::Span> {
 	/// `null`.
 	Null,
 
 	/// Boolean `true` or `false`.
-	Boolean(bool),
+	Boolean(#[stripped] bool),
 
 	/// Number.
-	Number(NumberBuf),
+	Number(#[stripped] NumberBuf),
 
 	/// String.
-	String(String),
+	String(#[stripped] String),
 
 	/// Array.
 	Array(Array<S, P>),

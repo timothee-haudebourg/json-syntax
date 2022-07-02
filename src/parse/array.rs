@@ -1,7 +1,23 @@
 use super::{Context, Error, Parse, Parser};
 use decoded_char::DecodedChar;
 use locspan::Loc;
+use locspan_derive::*;
 
+#[derive(
+	Clone,
+	Copy,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+	Debug,
+	StrippedPartialEq,
+	StrippedEq,
+	StrippedPartialOrd,
+	StrippedOrd,
+	StrippedHash,
+)]
 pub enum StartFragment {
 	Empty,
 	NonEmpty,
@@ -35,6 +51,21 @@ impl<F: Clone> Parse<F> for StartFragment {
 	}
 }
 
+#[derive(
+	Clone,
+	Copy,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+	Debug,
+	StrippedPartialEq,
+	StrippedEq,
+	StrippedPartialOrd,
+	StrippedOrd,
+	StrippedHash,
+)]
 pub enum ContinueFragment {
 	Item,
 	End,

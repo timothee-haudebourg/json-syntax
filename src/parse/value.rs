@@ -2,12 +2,28 @@ use super::{array, object, Context, Error, Parse, Parser, ValueOrParse};
 use crate::{Array, Entry, Key, NumberBuf, Object, String, Value};
 use decoded_char::DecodedChar;
 use locspan::Loc;
+use locspan_derive::*;
 
 /// Value fragment.
+#[derive(
+	Clone,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+	Debug,
+	StrippedPartialEq,
+	StrippedEq,
+	StrippedPartialOrd,
+	StrippedOrd,
+	StrippedHash,
+)]
+#[stripped_ignore(F)]
 pub enum Fragment<F> {
 	Value(Value<F>),
 	BeginArray,
-	BeginObject(Loc<Key, F>),
+	BeginObject(#[stripped_deref] Loc<Key, F>),
 }
 
 impl<F> From<Value<F>> for Fragment<F> {

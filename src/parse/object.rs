@@ -2,10 +2,26 @@ use super::{Context, Error, Parse, Parser};
 use crate::Key;
 use decoded_char::DecodedChar;
 use locspan::Loc;
+use locspan_derive::*;
 
+#[derive(
+	Clone,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+	Debug,
+	StrippedPartialEq,
+	StrippedEq,
+	StrippedPartialOrd,
+	StrippedOrd,
+	StrippedHash,
+)]
+#[stripped_ignore(F)]
 pub enum StartFragment<F> {
 	Empty,
-	NonEmpty(Loc<Key, F>),
+	NonEmpty(#[stripped_deref] Loc<Key, F>),
 }
 
 impl<F: Clone> Parse<F> for StartFragment<F> {
@@ -45,9 +61,24 @@ impl<F: Clone> Parse<F> for StartFragment<F> {
 	}
 }
 
+#[derive(
+	Clone,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+	Debug,
+	StrippedPartialEq,
+	StrippedEq,
+	StrippedPartialOrd,
+	StrippedOrd,
+	StrippedHash,
+)]
+#[stripped_ignore(F)]
 pub enum ContinueFragment<F> {
 	End,
-	Entry(Loc<Key, F>),
+	Entry(#[stripped_deref] Loc<Key, F>),
 }
 
 impl<F: Clone> Parse<F> for ContinueFragment<F> {

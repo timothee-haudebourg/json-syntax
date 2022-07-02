@@ -12,6 +12,7 @@ mod string;
 mod value;
 
 /// Parser options.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Options {
 	/// Whether or not to accept a high surrogate without its low counterpart
 	/// in strings.
