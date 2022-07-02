@@ -106,6 +106,22 @@ const NUMBER_CAPACITY: usize = SMALL_STRING_CAPACITY;
 pub type NumberBuf = json_number::SmallNumberBuf<NUMBER_CAPACITY>;
 
 /// Value.
+///
+/// The two types parameters are used to locate/map values inside the source
+/// file.
+/// The `S` parameter is the type used to identify the source file (generally
+/// a string slice, a path, or an index).
+/// The `P` parameter is the type used to locate the value *inside* the file.
+/// By default the `locspan::Span` type is used, since it is what the parser
+/// uses.
+///
+/// # Comparison
+///
+/// This type implements the usual comparison traits `PartialEq`, `Eq`,
+/// `PartialOrd` and `Ord`. However these implementations will also compare the
+/// code mapping information (source file and span).
+/// If you want to do comparisons while ignoring this information, you can use
+/// the [`locspan::Stripped`] type.
 #[derive(
 	Clone,
 	PartialEq,
@@ -246,6 +262,46 @@ impl<S, P> Value<S, P> {
 
 	#[inline]
 	pub fn as_object_mut(&mut self) -> Option<&mut Object<S, P>> {
+		match self {
+			Self::Object(o) => Some(o),
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn into_boolean(self) -> Option<bool> {
+		match self {
+			Self::Boolean(b) => Some(b),
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn into_number(self) -> Option<NumberBuf> {
+		match self {
+			Self::Number(n) => Some(n),
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn into_string(self) -> Option<String> {
+		match self {
+			Self::String(s) => Some(s),
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn into_array(self) -> Option<Array<S, P>> {
+		match self {
+			Self::Array(a) => Some(a),
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn into_object(self) -> Option<Object<S, P>> {
 		match self {
 			Self::Object(o) => Some(o),
 			_ => None,
