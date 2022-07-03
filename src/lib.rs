@@ -42,6 +42,7 @@ pub use json_number::Number;
 use locspan::Meta;
 use locspan_derive::*;
 
+mod object;
 pub mod parse;
 pub use parse::Parse;
 pub mod print;
@@ -52,7 +53,7 @@ mod macros;
 ///
 /// If a string is longer than this value,
 /// it will be stored on the heap.
-const SMALL_STRING_CAPACITY: usize = 16;
+pub const SMALL_STRING_CAPACITY: usize = 16;
 
 /// String.
 pub type String = smallstr::SmallString<[u8; SMALL_STRING_CAPACITY]>;
@@ -109,7 +110,7 @@ impl<M> Entry<M> {
 ///
 /// If the key is longer than this value,
 /// it will be stored on the heap.
-const KEY_CAPACITY: usize = 16;
+pub const KEY_CAPACITY: usize = 16;
 
 /// Object key.
 pub type Key = smallstr::SmallString<[u8; KEY_CAPACITY]>;
@@ -121,7 +122,7 @@ pub type Object<M> = Vec<Entry<M>>;
 ///
 /// If the number is longer than this value,
 /// it will be stored on the heap.
-const NUMBER_CAPACITY: usize = SMALL_STRING_CAPACITY;
+pub const NUMBER_CAPACITY: usize = SMALL_STRING_CAPACITY;
 
 /// Number buffer.
 pub type NumberBuf = json_number::SmallNumberBuf<NUMBER_CAPACITY>;
