@@ -17,15 +17,17 @@
 //! - Strings are stored on the stack whenever possible, thanks to the [`smallstr`](https://crates.io/crates/smallstr) crate.
 //! - The parser is configurable to accept documents that do not strictly
 //!   adhere to the standard.
+//! - Highly configurable printing methods.
+//! - Macro to build any value statically.
 //! - Thoroughly tested.
 //!
 //! # Usage
 //!
 //! ```
 //! use std::fs;
-//! use json_syntax::{Value, Parse};
+//! use json_syntax::{Value, Parse, Print};
 //! use decoded_char::DecodedChars;
-//! use locspan::Loc;
+//! use locspan::Meta;
 //!
 //! fn infallible<T>(t: T) -> Result<T, std::convert::Infallible> {
 //!   Ok(t)
@@ -33,16 +35,18 @@
 //!
 //! let filename = "tests/inputs/y_structure_500_nested_arrays.json";
 //! let input = fs::read_to_string(filename).unwrap();
-//! let Loc(value, value_location) = Value::parse(filename, input.decoded_chars().map(infallible)).expect("parse error");
-//!
-//! // ...
+//! let Meta(value, value_location) = Value::parse(filename, input.decoded_chars().map(infallible)).expect("parse error");
+//! println!("value: {}", value.pretty_print());
 //! ```
 pub use json_number::Number;
-use locspan::Loc;
+use locspan::Meta;
 use locspan_derive::*;
 
 pub mod parse;
 pub use parse::Parse;
+pub mod print;
+pub use print::Print;
+mod macros;
 
 /// String stack capacity.
 ///
@@ -54,7 +58,7 @@ const SMALL_STRING_CAPACITY: usize = 16;
 pub type String = smallstr::SmallString<[u8; SMALL_STRING_CAPACITY]>;
 
 /// Array.
-pub type Array<S, P = locspan::Span> = Vec<Loc<Value<S, P>, S, P>>;
+pub type Array<M> = Vec<Meta<Value<M>, M>>;
 
 /// Object entry.
 #[derive(
@@ -71,16 +75,33 @@ pub type Array<S, P = locspan::Span> = Vec<Loc<Value<S, P>, S, P>>;
 	StrippedOrd,
 	StrippedHash,
 )]
-#[stripped_ignore(S, P)]
-pub struct Entry<S, P = locspan::Span> {
+#[stripped_ignore(M)]
+pub struct Entry<M> {
 	#[stripped_deref]
-	pub key: Loc<Key, S, P>,
-	pub value: Loc<Value<S, P>, S, P>,
+	pub key: Meta<Key, M>,
+	pub value: Meta<Value<M>, M>,
 }
 
-impl<S, P> Entry<S, P> {
-	pub fn new(key: Loc<Key, S, P>, value: Loc<Value<S, P>, S, P>) -> Self {
+impl<M> Entry<M> {
+	pub fn new(key: Meta<Key, M>, value: Meta<Value<M>, M>) -> Self {
 		Self { key, value }
+	}
+
+	pub fn map_metadata<N>(self, mut f: impl FnMut(M) -> N) -> Entry<N> {
+		Entry {
+			key: self.key.map_metadata(&mut f),
+			value: self.value.map_metadata_recursively(f),
+		}
+	}
+
+	pub fn try_map_metadata<N, E>(
+		self,
+		mut f: impl FnMut(M) -> Result<N, E>,
+	) -> Result<Entry<N>, E> {
+		Ok(Entry {
+			key: self.key.try_map_metadata(&mut f)?,
+			value: self.value.try_map_metadata_recursively(f)?,
+		})
 	}
 }
 
@@ -94,7 +115,7 @@ const KEY_CAPACITY: usize = 16;
 pub type Key = smallstr::SmallString<[u8; KEY_CAPACITY]>;
 
 /// Object.
-pub type Object<S, P = locspan::Span> = Vec<Entry<S, P>>;
+pub type Object<M> = Vec<Entry<M>>;
 
 /// Number buffer stack capacity.
 ///
@@ -136,8 +157,8 @@ pub type NumberBuf = json_number::SmallNumberBuf<NUMBER_CAPACITY>;
 	StrippedOrd,
 	StrippedHash,
 )]
-#[stripped_ignore(S, P)]
-pub enum Value<S, P = locspan::Span> {
+#[stripped_ignore(M)]
+pub enum Value<M> {
 	/// `null`.
 	Null,
 
@@ -151,13 +172,13 @@ pub enum Value<S, P = locspan::Span> {
 	String(#[stripped] String),
 
 	/// Array.
-	Array(Array<S, P>),
+	Array(Array<M>),
 
 	/// Object.
-	Object(Object<S, P>),
+	Object(Object<M>),
 }
 
-impl<S, P> Value<S, P> {
+impl<M> Value<M> {
 	#[inline]
 	pub fn is_null(&self) -> bool {
 		matches!(self, Self::Null)
@@ -237,7 +258,7 @@ impl<S, P> Value<S, P> {
 	}
 
 	#[inline]
-	pub fn as_array(&self) -> Option<&[Loc<Self, S, P>]> {
+	pub fn as_array(&self) -> Option<&[Meta<Self, M>]> {
 		match self {
 			Self::Array(a) => Some(a),
 			_ => None,
@@ -245,7 +266,7 @@ impl<S, P> Value<S, P> {
 	}
 
 	#[inline]
-	pub fn as_array_mut(&mut self) -> Option<&mut Array<S, P>> {
+	pub fn as_array_mut(&mut self) -> Option<&mut Array<M>> {
 		match self {
 			Self::Array(a) => Some(a),
 			_ => None,
@@ -253,7 +274,7 @@ impl<S, P> Value<S, P> {
 	}
 
 	#[inline]
-	pub fn as_object(&self) -> Option<&Object<S, P>> {
+	pub fn as_object(&self) -> Option<&[Entry<M>]> {
 		match self {
 			Self::Object(o) => Some(o),
 			_ => None,
@@ -261,7 +282,7 @@ impl<S, P> Value<S, P> {
 	}
 
 	#[inline]
-	pub fn as_object_mut(&mut self) -> Option<&mut Object<S, P>> {
+	pub fn as_object_mut(&mut self) -> Option<&mut Object<M>> {
 		match self {
 			Self::Object(o) => Some(o),
 			_ => None,
@@ -293,7 +314,7 @@ impl<S, P> Value<S, P> {
 	}
 
 	#[inline]
-	pub fn into_array(self) -> Option<Array<S, P>> {
+	pub fn into_array(self) -> Option<Array<M>> {
 		match self {
 			Self::Array(a) => Some(a),
 			_ => None,
@@ -301,10 +322,180 @@ impl<S, P> Value<S, P> {
 	}
 
 	#[inline]
-	pub fn into_object(self) -> Option<Object<S, P>> {
+	pub fn into_object(self) -> Option<Object<M>> {
 		match self {
 			Self::Object(o) => Some(o),
 			_ => None,
 		}
 	}
+
+	/// Recursively count the number of values for which `f` returns `true`.
+	pub fn count(&self, f: impl Clone + Fn(&Self) -> bool) -> usize {
+		let mut result = if f(self) { 1 } else { 0 };
+
+		match self {
+			Self::Array(array) => {
+				for item in array {
+					result += item.count(f.clone())
+				}
+			}
+			Self::Object(object) => {
+				for entry in object {
+					result += entry.value.count(f.clone())
+				}
+			}
+			_ => (),
+		}
+
+		result
+	}
+
+	/// Returns the volume of the value.
+	///
+	/// The volume is the sum of all values and recursively nested values
+	/// included in `self`, including `self` (the volume is at least `1`).
+	///
+	/// This is equivalent to `value.count(|_| true)`.
+	pub fn volume(&self) -> usize {
+		self.count(|_| true)
+	}
+
+	/// Recursively maps the metadata inside the value.
+	pub fn map_metadata<N>(self, mut f: impl FnMut(M) -> N) -> Value<N> {
+		match self {
+			Self::Null => Value::Null,
+			Self::Boolean(b) => Value::Boolean(b),
+			Self::Number(n) => Value::Number(n),
+			Self::String(s) => Value::String(s),
+			Self::Array(a) => Value::Array(
+				a.into_iter()
+					.map(|Meta(item, meta)| Meta(item.map_metadata(&mut f), f(meta)))
+					.collect(),
+			),
+			Self::Object(o) => Value::Object(
+				o.into_iter()
+					.map(|entry| entry.map_metadata(&mut f))
+					.collect(),
+			),
+		}
+	}
+
+	/// Tries to recursively maps the metadata inside the value.
+	pub fn try_map_metadata<N, E>(
+		self,
+		mut f: impl FnMut(M) -> Result<N, E>,
+	) -> Result<Value<N>, E> {
+		match self {
+			Self::Null => Ok(Value::Null),
+			Self::Boolean(b) => Ok(Value::Boolean(b)),
+			Self::Number(n) => Ok(Value::Number(n)),
+			Self::String(s) => Ok(Value::String(s)),
+			Self::Array(a) => {
+				let mut items = Vec::with_capacity(a.len());
+				for item in a {
+					items.push(item.try_map_metadata_recursively(&mut f)?)
+				}
+				Ok(Value::Array(items))
+			}
+			Self::Object(o) => {
+				let mut entries = Vec::with_capacity(o.len());
+				for entry in o {
+					entries.push(entry.try_map_metadata(&mut f)?)
+				}
+				Ok(Value::Object(entries))
+			}
+		}
+	}
+}
+
+impl<M, N> locspan::MapMetadataRecursively<M, N> for Value<M> {
+	type Output = Value<N>;
+
+	fn map_metadata_recursively<F: FnMut(M) -> N>(self, f: F) -> Value<N> {
+		self.map_metadata(f)
+	}
+}
+
+impl<M, N, E> locspan::TryMapMetadataRecursively<M, N, E> for Value<M> {
+	type Output = Value<N>;
+
+	fn try_map_metadata_recursively<F: FnMut(M) -> Result<N, E>>(
+		self,
+		f: F,
+	) -> Result<Value<N>, E> {
+		self.try_map_metadata(f)
+	}
+}
+
+impl<M> From<bool> for Value<M> {
+	fn from(b: bool) -> Self {
+		Self::Boolean(b)
+	}
+}
+
+impl<M> From<NumberBuf> for Value<M> {
+	fn from(n: NumberBuf) -> Self {
+		Self::Number(n)
+	}
+}
+
+impl<'n, M> From<&'n Number> for Value<M> {
+	fn from(n: &'n Number) -> Self {
+		Self::Number(unsafe { NumberBuf::new_unchecked(n.as_bytes().into()) })
+	}
+}
+
+impl<M> From<String> for Value<M> {
+	fn from(s: String) -> Self {
+		Self::String(s)
+	}
+}
+
+impl<M> From<::std::string::String> for Value<M> {
+	fn from(s: ::std::string::String) -> Self {
+		Self::String(s.into())
+	}
+}
+
+impl<'s, M> From<&'s str> for Value<M> {
+	fn from(s: &'s str) -> Self {
+		Self::String(s.into())
+	}
+}
+
+impl<M> From<Array<M>> for Value<M> {
+	fn from(a: Array<M>) -> Self {
+		Self::Array(a)
+	}
+}
+
+impl<M> From<Object<M>> for Value<M> {
+	fn from(o: Object<M>) -> Self {
+		Self::Object(o)
+	}
+}
+
+macro_rules! from_number {
+	($($ty:ident),*) => {
+		$(
+			impl<M> From<$ty> for Value<M> {
+				fn from(n: $ty) -> Self {
+					Value::Number(n.into())
+				}
+			}
+		)*
+	};
+}
+
+from_number! {
+	u8,
+	u16,
+	u32,
+	u64,
+	i8,
+	i16,
+	i32,
+	i64,
+	f32,
+	f64
 }

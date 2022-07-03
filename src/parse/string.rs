@@ -1,6 +1,6 @@
 use super::{Context, Error, Parse, Parser};
 use decoded_char::DecodedChar;
-use locspan::Loc;
+use locspan::{Loc, Meta};
 use smallstr::SmallString;
 
 fn is_control(c: char) -> bool {
@@ -68,7 +68,7 @@ impl<F: Clone, A: smallvec::Array<Item = u8>> Parse<F> for SmallString<A> {
 				loop {
 					let c = match parser.next_char()? {
 						Some('"') => {
-							if let Some(Loc(high, loc)) = high_surrogate {
+							if let Some(Meta(high, loc)) = high_surrogate {
 								if parser.options.accept_truncated_surrogate_pair {
 									result.push('\u{fffd}');
 								} else {
@@ -91,10 +91,10 @@ impl<F: Clone, A: smallvec::Array<Item = u8>> Parse<F> for SmallString<A> {
 							Some('f') => '\u{000c}',
 							Some('r') => '\u{000d}',
 							Some('u') => {
-								let Loc(codepoint, codepoint_loc) = parse_hex4(parser)?;
+								let Meta(codepoint, codepoint_loc) = parse_hex4(parser)?;
 
 								match high_surrogate.take() {
-									Some(Loc(high, high_loc)) => {
+									Some(Meta(high, high_loc)) => {
 										if (0xdc00..=0xdfff).contains(&codepoint) {
 											let low = codepoint;
 											let low_loc = codepoint_loc;
@@ -180,7 +180,7 @@ impl<F: Clone, A: smallvec::Array<Item = u8>> Parse<F> for SmallString<A> {
 						}
 					};
 
-					if let Some(Loc(high, loc)) = high_surrogate.take() {
+					if let Some(Meta(high, loc)) = high_surrogate.take() {
 						if parser.options.accept_truncated_surrogate_pair {
 							result.push('\u{fffd}');
 						} else {

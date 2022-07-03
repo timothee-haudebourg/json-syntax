@@ -1,7 +1,7 @@
 use super::{array, object, Context, Error, Parse, Parser, ValueOrParse};
 use crate::{Array, Entry, Key, NumberBuf, Object, String, Value};
 use decoded_char::DecodedChar;
-use locspan::Loc;
+use locspan::{Loc, Location, Meta};
 use locspan_derive::*;
 
 /// Value fragment.
@@ -21,13 +21,13 @@ use locspan_derive::*;
 )]
 #[stripped_ignore(F)]
 pub enum Fragment<F> {
-	Value(Value<F>),
+	Value(Value<Location<F>>),
 	BeginArray,
 	BeginObject(#[stripped_deref] Loc<Key, F>),
 }
 
-impl<F> From<Value<F>> for Fragment<F> {
-	fn from(v: Value<F>) -> Self {
+impl<F> From<Value<Location<F>>> for Fragment<F> {
+	fn from(v: Value<Location<F>>) -> Self {
 		Self::Value(v)
 	}
 }
@@ -48,12 +48,12 @@ impl<F: Clone> Parse<F> for Fragment<F> {
 			Some('0'..='9' | '-') => NumberBuf::parse_in(parser, context)?.map(Value::Number),
 			Some('"') => String::parse_in(parser, context)?.map(Value::String),
 			Some('[') => match array::StartFragment::parse_in(parser, context)? {
-				Loc(array::StartFragment::Empty, loc) => Loc(Value::Array(Array::new()), loc),
-				Loc(array::StartFragment::NonEmpty, loc) => return Ok(Loc(Self::BeginArray, loc)),
+				Meta(array::StartFragment::Empty, loc) => Loc(Value::Array(Array::new()), loc),
+				Meta(array::StartFragment::NonEmpty, loc) => return Ok(Loc(Self::BeginArray, loc)),
 			},
 			Some('{') => match object::StartFragment::parse_in(parser, context)? {
-				Loc(object::StartFragment::Empty, loc) => Loc(Value::Object(Object::new()), loc),
-				Loc(object::StartFragment::NonEmpty(key), loc) => {
+				Meta(object::StartFragment::Empty, loc) => Loc(Value::Object(Object::new()), loc),
+				Meta(object::StartFragment::NonEmpty(key), loc) => {
 					return Ok(Loc(Self::BeginObject(key), loc))
 				}
 			},
@@ -66,7 +66,7 @@ impl<F: Clone> Parse<F> for Fragment<F> {
 	}
 }
 
-impl<F: Clone> Parse<F> for Value<F> {
+impl<F: Clone> Parse<F> for Value<Location<F>> {
 	fn parse_in<E, C>(
 		parser: &mut Parser<F, E, C>,
 		context: Context,
@@ -75,14 +75,14 @@ impl<F: Clone> Parse<F> for Value<F> {
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
 		enum Item<F> {
-			Array(Loc<Array<F>, F>),
-			ArrayItem(Loc<Array<F>, F>),
-			Object(Loc<Object<F>, F>),
-			ObjectEntry(Loc<Object<F>, F>, Loc<Key, F>),
+			Array(Loc<Array<Location<F>>, F>),
+			ArrayItem(Loc<Array<Location<F>>, F>),
+			Object(Loc<Object<Location<F>>, F>),
+			ObjectEntry(Loc<Object<Location<F>>, F>, Loc<Key, F>),
 		}
 
 		let mut stack: Vec<Item<F>> = vec![];
-		let mut value: Option<Loc<Value<F>, F>> = None;
+		let mut value: Option<Loc<Value<Location<F>>, F>> = None;
 
 		fn stack_context<F>(stack: &[Item<F>], root: Context) -> Context {
 			match stack.last() {
@@ -100,70 +100,70 @@ impl<F: Clone> Parse<F> for Value<F> {
 					parser,
 					stack_context(&stack, context),
 				)? {
-					Loc(Fragment::Value(value), loc) => break Ok(Loc(value, loc)),
-					Loc(Fragment::BeginArray, loc) => {
+					Meta(Fragment::Value(value), loc) => break Ok(Loc(value, loc)),
+					Meta(Fragment::BeginArray, loc) => {
 						stack.push(Item::ArrayItem(Loc(Array::new(), loc)))
 					}
-					Loc(Fragment::BeginObject(key), loc) => {
+					Meta(Fragment::BeginObject(key), loc) => {
 						stack.push(Item::ObjectEntry(Loc(Object::new(), loc), key))
 					}
 				},
-				Some(Item::Array(Loc(array, loc))) => {
+				Some(Item::Array(Meta(array, loc))) => {
 					match array::ContinueFragment::parse_in(parser, stack_context(&stack, context))?
 					{
-						Loc(array::ContinueFragment::Item, comma_loc) => {
+						Meta(array::ContinueFragment::Item, comma_loc) => {
 							stack.push(Item::ArrayItem(Loc(array, loc.with(comma_loc.span()))))
 						}
-						Loc(array::ContinueFragment::End, closing_loc) => {
+						Meta(array::ContinueFragment::End, closing_loc) => {
 							parser.skip_trailing_whitespaces(stack_context(&stack, context))?;
 							value = Some(Loc(Value::Array(array), loc.with(closing_loc.span())))
 						}
 					}
 				}
-				Some(Item::ArrayItem(Loc(mut array, loc))) => {
+				Some(Item::ArrayItem(Meta(mut array, loc))) => {
 					match Fragment::value_or_parse(value.take(), parser, Context::Array)? {
-						Loc(Fragment::Value(value), value_loc) => {
+						Meta(Fragment::Value(value), value_loc) => {
 							let value_span = value_loc.span();
 							array.push(Loc(value, value_loc));
 							stack.push(Item::Array(Loc(array, loc.with(value_span))));
 						}
-						Loc(Fragment::BeginArray, value_loc) => {
+						Meta(Fragment::BeginArray, value_loc) => {
 							stack.push(Item::Array(Loc(array, loc.with(value_loc.span()))));
 							stack.push(Item::ArrayItem(Loc(Array::new(), value_loc)))
 						}
-						Loc(Fragment::BeginObject(value_key), value_loc) => {
+						Meta(Fragment::BeginObject(value_key), value_loc) => {
 							stack.push(Item::Array(Loc(array, loc.with(value_loc.span()))));
 							stack.push(Item::ObjectEntry(Loc(Object::new(), value_loc), value_key))
 						}
 					}
 				}
-				Some(Item::Object(Loc(object, loc))) => match object::ContinueFragment::parse_in(
+				Some(Item::Object(Meta(object, loc))) => match object::ContinueFragment::parse_in(
 					parser,
 					stack_context(&stack, context),
 				)? {
-					Loc(object::ContinueFragment::Entry(key), comma_key_loc) => stack.push(
+					Meta(object::ContinueFragment::Entry(key), comma_key_loc) => stack.push(
 						Item::ObjectEntry(Loc(object, loc.with(comma_key_loc.span())), key),
 					),
-					Loc(object::ContinueFragment::End, closing_loc) => {
+					Meta(object::ContinueFragment::End, closing_loc) => {
 						parser.skip_trailing_whitespaces(stack_context(&stack, context))?;
 						value = Some(Loc(Value::Object(object), loc.with(closing_loc.span())))
 					}
 				},
-				Some(Item::ObjectEntry(Loc(mut object, loc), key)) => {
+				Some(Item::ObjectEntry(Meta(mut object, loc), key)) => {
 					match Fragment::value_or_parse(value.take(), parser, Context::ObjectValue)? {
-						Loc(Fragment::Value(value), value_loc) => {
+						Meta(Fragment::Value(value), value_loc) => {
 							let value_span = value_loc.span();
 							object.push(Entry::new(key, Loc(value, value_loc)));
 							stack.push(Item::Object(Loc(object, loc.with(value_span))));
 						}
-						Loc(Fragment::BeginArray, value_loc) => {
+						Meta(Fragment::BeginArray, value_loc) => {
 							stack.push(Item::ObjectEntry(
 								Loc(object, loc.with(value_loc.span())),
 								key,
 							));
 							stack.push(Item::ArrayItem(Loc(Array::new(), value_loc)))
 						}
-						Loc(Fragment::BeginObject(value_key), value_loc) => {
+						Meta(Fragment::BeginObject(value_key), value_loc) => {
 							stack.push(Item::ObjectEntry(
 								Loc(object, loc.with(value_loc.span())),
 								key,

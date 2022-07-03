@@ -87,7 +87,7 @@ pub trait Parse<F>: Sized {
 
 pub trait ValueOrParse<F>: Parse<F> {
 	fn value_or_parse<E, C>(
-		value: Option<Loc<Value<F>, F>>,
+		value: Option<Loc<Value<Location<F>>, F>>,
 		parser: &mut Parser<F, E, C>,
 		context: Context,
 	) -> Result<Loc<Self, F>, Loc<Error<E, F>, F>>
@@ -97,10 +97,10 @@ pub trait ValueOrParse<F>: Parse<F> {
 
 impl<F, T> ValueOrParse<F> for T
 where
-	T: Parse<F> + From<Value<F>>,
+	T: Parse<F> + From<Value<Location<F>>>,
 {
 	fn value_or_parse<E, C>(
-		value: Option<Loc<Value<F>, F>>,
+		value: Option<Loc<Value<Location<F>>, F>>,
 		parser: &mut Parser<F, E, C>,
 		context: Context,
 	) -> Result<Loc<Self, F>, Loc<Error<E, F>, F>>
