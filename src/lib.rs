@@ -475,7 +475,7 @@ impl<M> From<Object<M>> for Value<M> {
 	}
 }
 
-macro_rules! from_number {
+macro_rules! from_integer {
 	($($ty:ident),*) => {
 		$(
 			impl<M> From<$ty> for Value<M> {
@@ -487,7 +487,7 @@ macro_rules! from_number {
 	};
 }
 
-from_number! {
+from_integer! {
 	u8,
 	u16,
 	u32,
@@ -495,7 +495,24 @@ from_number! {
 	i8,
 	i16,
 	i32,
-	i64,
+	i64
+}
+
+macro_rules! try_from_float {
+	($($ty:ident),*) => {
+		$(
+			impl<M> TryFrom<$ty> for Value<M> {
+				type Error = json_number::TryFromFloatError;
+
+				fn try_from(n: $ty) -> Result<Self, Self::Error> {
+					Ok(Value::Number(n.try_into()?))
+				}
+			}
+		)*
+	};
+}
+
+try_from_float! {
 	f32,
 	f64
 }

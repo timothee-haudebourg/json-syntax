@@ -184,3 +184,21 @@ fn macro_13() {
 		)
 	)
 }
+
+#[test]
+fn macro_14() {
+	let value: Meta<Value<()>, ()> = json! {
+		{ "a": 0.1, "b": 1.1e10 }
+	};
+
+	assert_eq!(
+		value,
+		Meta(
+			Value::Object(vec![
+				Entry::new(Meta("a".into(), ()), Meta(Value::Number(0.1.try_into().unwrap()), ())),
+				Entry::new(Meta("b".into(), ()), Meta(Value::Number(1.1e10.try_into().unwrap()), ()))
+			]),
+			()
+		)
+	)
+}

@@ -341,7 +341,7 @@ macro_rules! json {
 	};
 
 	($lit:literal @ $meta:expr) => {
-		::locspan::Meta($lit.into(), $meta)
+		::locspan::Meta($lit.try_into().unwrap(), $meta)
 	};
 
 	($lit:literal) => {
