@@ -243,6 +243,18 @@ pub trait Print {
 		self.print_with(Options::pretty())
 	}
 
+	/// Print the value with `Options::compact` options.
+	#[inline(always)]
+	fn compact_print(&self) -> Printed<'_, Self> {
+		self.print_with(Options::compact())
+	}
+
+	/// Print the value with `Options::inline` options.
+	#[inline(always)]
+	fn inline_print(&self) -> Printed<'_, Self> {
+		self.print_with(Options::inline())
+	}
+
 	/// Print the value with the given options.
 	#[inline(always)]
 	fn print_with(&self, options: Options) -> Printed<'_, Self> {
