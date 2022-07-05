@@ -15,7 +15,7 @@ impl<T: ?Sized + Eq, Q: ?Sized> Equivalent<Q> for T where Q: std::borrow::Borrow
 
 fn make_insert_hash<K, S>(hash_builder: &S, val: &K) -> u64
 where
-	K: Hash,
+	K: ?Sized + Hash,
 	S: BuildHasher,
 {
 	use core::hash::Hasher;
@@ -26,7 +26,7 @@ where
 
 fn equivalent_key<'a, M, Q>(entries: &'a [Entry<M>], k: &'a Q) -> impl 'a + Fn(&Indexes) -> bool
 where
-	Q: ?Sized + Eq + Equivalent<Key>
+	Q: ?Sized + Equivalent<Key>
 {
 	move |indexes| k.equivalent(entries[indexes.rep].key.value())
 }
@@ -48,7 +48,8 @@ where
 	state.finish()
 }
 
-struct Indexes {
+#[derive(Clone)]
+pub struct Indexes {
 	/// Index of the first entry with the considered key (the representative).
 	rep: usize,
 
@@ -62,6 +63,18 @@ impl Indexes {
 			rep,
 			other: Vec::new()
 		}
+	}
+
+	pub fn first(&self) -> usize {
+		self.rep
+	}
+
+	pub fn redundant(&self) -> Option<usize> {
+		self.other.first().cloned()
+	}
+
+	pub fn redundants(&self) -> &[usize] {
+		&self.other
 	}
 
 	fn insert(&mut self, mut index: usize) {
@@ -109,8 +122,25 @@ impl Indexes {
 			}
 		}
 	}
+
+	pub fn iter(&self) -> super::Indexes {
+		super::Indexes::Some {
+			first: Some(self.rep),
+			other: self.other.iter()
+		}
+	}
 }
 
+impl<'a> IntoIterator for &'a Indexes {
+	type Item = usize;
+	type IntoIter = super::Indexes<'a>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.iter()
+	}
+}
+
+#[derive(Clone)]
 pub struct IndexMap<S = DefaultHashBuilder> {
 	hash_builder: S,
 	table: RawTable<Indexes>
@@ -132,6 +162,11 @@ impl<S> IndexMap<S> {
 }
 
 impl<S: BuildHasher> IndexMap<S> {
+	pub fn get<M, Q: ?Sized>(&self, entries: &[Entry<M>], key: &Q) -> Option<&Indexes> where Q: Hash + Equivalent<Key> {
+		let hash = make_insert_hash(&self.hash_builder, key);
+		self.table.get(hash, equivalent_key(entries, key))
+	}
+
 	/// Associates the given `key` to `index`.
 	/// 
 	/// Returns `true` if no index was already associated to the key.

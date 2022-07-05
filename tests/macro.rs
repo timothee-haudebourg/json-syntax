@@ -1,4 +1,4 @@
-use json_syntax::{json, Entry, Key, Value};
+use json_syntax::{json, object::{Entry, Key}, Value};
 use locspan::Meta;
 
 #[test]
@@ -188,7 +188,7 @@ fn macro_13() {
 #[test]
 fn macro_14() {
 	let value: Meta<Value<()>, ()> = json! {
-		{ "a": 0.1, "b": 1.1e10 }
+		{ "a": 0.1f32, "b": 1.1e10f32 }
 	};
 
 	assert_eq!(
@@ -197,11 +197,11 @@ fn macro_14() {
 			Value::Object(vec![
 				Entry::new(
 					Meta("a".into(), ()),
-					Meta(Value::Number(0.1.try_into().unwrap()), ())
+					Meta(Value::Number(0.1f32.try_into().unwrap()), ())
 				),
 				Entry::new(
 					Meta("b".into(), ()),
-					Meta(Value::Number(1.1e10.try_into().unwrap()), ())
+					Meta(Value::Number(1.1e10f32.try_into().unwrap()), ())
 				)
 			]),
 			()

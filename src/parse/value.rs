@@ -1,5 +1,5 @@
 use super::{array, object, Context, Error, Parse, Parser, ValueOrParse};
-use crate::{Array, Entry, Key, NumberBuf, Object, String, Value};
+use crate::{Array, object::Key, NumberBuf, Object, String, Value};
 use decoded_char::DecodedChar;
 use locspan::{Loc, Location, Meta};
 use locspan_derive::*;
@@ -153,7 +153,7 @@ impl<F: Clone> Parse<F> for Value<Location<F>> {
 					match Fragment::value_or_parse(value.take(), parser, Context::ObjectValue)? {
 						Meta(Fragment::Value(value), value_loc) => {
 							let value_span = value_loc.span();
-							object.push(Entry::new(key, Loc(value, value_loc)));
+							object.push(key, Loc(value, value_loc));
 							stack.push(Item::Object(Loc(object, loc.with(value_span))));
 						}
 						Meta(Fragment::BeginArray, value_loc) => {

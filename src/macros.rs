@@ -171,12 +171,12 @@ macro_rules! json {
 
 	// Done with trailing comma.
 	(@object [$($elems:expr,)*] () () ()) => {
-		json_vec![$($elems,)*]
+		$crate::Object::from_vec(json_vec![$($elems,)*])
 	};
 
 	// Done without trailing comma.
 	(@object [$($elems:expr),*] () () ()) => {
-		json_vec![$($elems),*]
+		$crate::Object::from_vec(json_vec![$($elems),*])
 	};
 
 	// Create an entry literal key with metadata.
@@ -196,72 +196,72 @@ macro_rules! json {
 
 	// Next value is `null` with metadata.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: null @ $meta:expr $(,$($rest:tt)*)?) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::Entry::new(json!(@key ($($key)+)), json!(null @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
+		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(null @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
 	};
 
 	// Next value is `null`.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: null $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::Entry::new(json!(@key ($($key)+)), json!(null))] () ($($rest)*) ($($rest)*))
+		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(null))] () ($($rest)*) ($($rest)*))
 	};
 
 	// Next value is `true` with metadata.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: true @ $meta:expr $(,$($rest:tt)*)?) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::Entry::new(json!(@key ($($key)+)), json!(true @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
+		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(true @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
 	};
 
 	// Next value is `true`.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: true $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::Entry::new(json!(@key ($($key)+)), json!(true))] () ($($rest)*) ($($rest)*))
+		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(true))] () ($($rest)*) ($($rest)*))
 	};
 
 	// Next value is `false` with metadata.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: false @ $meta:expr $(,$($rest:tt)*)?) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::Entry::new(json!(@key ($($key)+)), json!(false @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
+		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(false @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
 	};
 
 	// Next value is `false`.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: false $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::Entry::new(json!(@key ($($key)+)), json!(false))] () ($($rest)*) ($($rest)*))
+		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(false))] () ($($rest)*) ($($rest)*))
 	};
 
 	// Next value is a literal with metadata.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: $lit:literal @ $meta:expr $(,$($rest:tt)*)?) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::Entry::new(json!(@key ($($key)+)), json!($lit @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
+		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!($lit @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
 	};
 
 	// Next value is a literal.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: $lit:literal $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::Entry::new(json!(@key ($($key)+)), json!($lit))] () ($($rest)*) ($($rest)*))
+		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!($lit))] () ($($rest)*) ($($rest)*))
 	};
 
 	// Next value is a array with metadata.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: [$($array:tt)*] @ $meta:expr $(,$($rest:tt)*)?) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::Entry::new(json!(@key ($($key)+)), json!([$($array)*] @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
+		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!([$($array)*] @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
 	};
 
 	// Next value is a array.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: [$($array:tt)*] $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::Entry::new(json!(@key ($($key)+)), json!([$($array)*]))] () ($($rest)*) ($($rest)*))
+		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!([$($array)*]))] () ($($rest)*) ($($rest)*))
 	};
 
 	// Next value is a map with metadata.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: {$($map:tt)*} @ $meta:expr $(,$($rest:tt)*)?) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::Entry::new(json!(@key ($($key)+)), json!({$($map)*} @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
+		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!({$($map)*} @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
 	};
 
 	// Next value is a map.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: {$($map:tt)*} $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::Entry::new(json!(@key ($($key)+)), json!({$($map)*}))] () ($($rest)*) ($($rest)*))
+		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!({$($map)*}))] () ($($rest)*) ($($rest)*))
 	};
 
 	// Next value is an expression followed by comma.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: $next:expr, $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::Entry::new(json!(@key ($($key)+)), json!($next)),] () ($($rest)*) ($($rest)*))
+		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!($next)),] () ($($rest)*) ($($rest)*))
 	};
 
 	// Last value is an expression with no trailing comma.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: $last:expr) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::Entry::new(json!(@key ($($key)+)), json!($last))] () () ())
+		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!($last))] () () ())
 	};
 
 	// Comma after the most recent element.

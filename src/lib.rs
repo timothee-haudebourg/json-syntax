@@ -42,12 +42,15 @@ pub use json_number::Number;
 use locspan::Meta;
 use locspan_derive::*;
 
-mod object;
+pub mod object;
+mod unordered;
 pub mod parse;
 pub use parse::Parse;
 pub mod print;
 pub use print::Print;
 mod macros;
+
+pub use unordered::*;
 
 /// String stack capacity.
 ///
@@ -61,62 +64,7 @@ pub type String = smallstr::SmallString<[u8; SMALL_STRING_CAPACITY]>;
 /// Array.
 pub type Array<M> = Vec<Meta<Value<M>, M>>;
 
-/// Object entry.
-#[derive(
-	Clone,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Hash,
-	Debug,
-	StrippedPartialEq,
-	StrippedEq,
-	StrippedPartialOrd,
-	StrippedOrd,
-	StrippedHash,
-)]
-#[stripped_ignore(M)]
-pub struct Entry<M> {
-	#[stripped_deref]
-	pub key: Meta<Key, M>,
-	pub value: Meta<Value<M>, M>,
-}
-
-impl<M> Entry<M> {
-	pub fn new(key: Meta<Key, M>, value: Meta<Value<M>, M>) -> Self {
-		Self { key, value }
-	}
-
-	pub fn map_metadata<N>(self, mut f: impl FnMut(M) -> N) -> Entry<N> {
-		Entry {
-			key: self.key.map_metadata(&mut f),
-			value: self.value.map_metadata_recursively(f),
-		}
-	}
-
-	pub fn try_map_metadata<N, E>(
-		self,
-		mut f: impl FnMut(M) -> Result<N, E>,
-	) -> Result<Entry<N>, E> {
-		Ok(Entry {
-			key: self.key.try_map_metadata(&mut f)?,
-			value: self.value.try_map_metadata_recursively(f)?,
-		})
-	}
-}
-
-/// Object key stack capacity.
-///
-/// If the key is longer than this value,
-/// it will be stored on the heap.
-pub const KEY_CAPACITY: usize = 16;
-
-/// Object key.
-pub type Key = smallstr::SmallString<[u8; KEY_CAPACITY]>;
-
-/// Object.
-pub type Object<M> = Vec<Entry<M>>;
+pub use object::Object;
 
 /// Number buffer stack capacity.
 ///
@@ -275,7 +223,7 @@ impl<M> Value<M> {
 	}
 
 	#[inline]
-	pub fn as_object(&self) -> Option<&[Entry<M>]> {
+	pub fn as_object(&self) -> Option<&Object<M>> {
 		match self {
 			Self::Object(o) => Some(o),
 			_ => None,
@@ -373,11 +321,7 @@ impl<M> Value<M> {
 					.map(|Meta(item, meta)| Meta(item.map_metadata(&mut f), f(meta)))
 					.collect(),
 			),
-			Self::Object(o) => Value::Object(
-				o.into_iter()
-					.map(|entry| entry.map_metadata(&mut f))
-					.collect(),
-			),
+			Self::Object(o) => Value::Object(o.map_metadata(f)),
 		}
 	}
 
@@ -398,13 +342,7 @@ impl<M> Value<M> {
 				}
 				Ok(Value::Array(items))
 			}
-			Self::Object(o) => {
-				let mut entries = Vec::with_capacity(o.len());
-				for entry in o {
-					entries.push(entry.try_map_metadata(&mut f)?)
-				}
-				Ok(Value::Object(entries))
-			}
+			Self::Object(o) => Ok(Value::Object(o.try_map_metadata(f)?))
 		}
 	}
 }

@@ -1,5 +1,5 @@
 use super::{Context, Error, Parse, Parser};
-use crate::Key;
+use crate::object::Key;
 use decoded_char::DecodedChar;
 use locspan::Loc;
 use locspan_derive::*;
