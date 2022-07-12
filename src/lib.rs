@@ -75,6 +75,17 @@ pub const NUMBER_CAPACITY: usize = SMALL_STRING_CAPACITY;
 /// Number buffer.
 pub type NumberBuf = json_number::SmallNumberBuf<NUMBER_CAPACITY>;
 
+/// Value kind.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub enum Kind {
+	Null,
+	Boolean,
+	Number,
+	String,
+	Array,
+	Object
+}
+
 /// Value.
 ///
 /// The two types parameters are used to locate/map values inside the source
@@ -128,6 +139,23 @@ pub enum Value<M> {
 }
 
 impl<M> Value<M> {
+	#[inline]
+	pub fn kind(&self) -> Kind {
+		match self {
+			Self::Null => Kind::Null,
+			Self::Boolean(_) => Kind::Boolean,
+			Self::Number(_) => Kind::Number,
+			Self::String(_) => Kind::String,
+			Self::Array(_) => Kind::Array,
+			Self::Object(_) => Kind::Object
+		}
+	}
+
+	#[inline]
+	pub fn is_kind(&self, kind: Kind) -> bool {
+		self.kind() == kind
+	}
+
 	#[inline]
 	pub fn is_null(&self) -> bool {
 		matches!(self, Self::Null)
