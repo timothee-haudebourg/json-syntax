@@ -3,13 +3,13 @@ use hashbrown::raw::RawTable;
 use hashbrown::hash_map::DefaultHashBuilder;
 use super::{Key, Entry};
 
-pub trait Equivalent<Q: ?Sized> {
-	fn equivalent(&self, q: &Q) -> bool;
+pub trait Equivalent<K: ?Sized> {
+	fn equivalent(&self, key: &K) -> bool;
 }
 
-impl<T: ?Sized + Eq, Q: ?Sized> Equivalent<Q> for T where Q: std::borrow::Borrow<T> {
-	fn equivalent(&self, q: &Q) -> bool {
-		self == q.borrow()
+impl<Q: ?Sized + Eq, K: ?Sized> Equivalent<K> for Q where K: std::borrow::Borrow<Q> {
+	fn equivalent(&self, key: &K) -> bool {
+		self == key.borrow()
 	}
 }
 
