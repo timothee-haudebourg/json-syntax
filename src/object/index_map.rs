@@ -1,13 +1,16 @@
-use core::hash::{Hash, BuildHasher};
-use hashbrown::raw::RawTable;
+use super::{Entry, Key};
+use core::hash::{BuildHasher, Hash};
 use hashbrown::hash_map::DefaultHashBuilder;
-use super::{Key, Entry};
+use hashbrown::raw::RawTable;
 
 pub trait Equivalent<K: ?Sized> {
 	fn equivalent(&self, key: &K) -> bool;
 }
 
-impl<Q: ?Sized + Eq, K: ?Sized> Equivalent<K> for Q where K: std::borrow::Borrow<Q> {
+impl<Q: ?Sized + Eq, K: ?Sized> Equivalent<K> for Q
+where
+	K: std::borrow::Borrow<Q>,
+{
 	fn equivalent(&self, key: &K) -> bool {
 		self == key.borrow()
 	}
@@ -26,12 +29,15 @@ where
 
 fn equivalent_key<'a, M, Q>(entries: &'a [Entry<M>], k: &'a Q) -> impl 'a + Fn(&Indexes) -> bool
 where
-	Q: ?Sized + Equivalent<Key>
+	Q: ?Sized + Equivalent<Key>,
 {
 	move |indexes| k.equivalent(entries[indexes.rep].key.value())
 }
 
-fn make_hasher<'a, M, S>(entries: &'a [Entry<M>], hash_builder: &'a S) -> impl 'a + Fn(&Indexes) -> u64
+fn make_hasher<'a, M, S>(
+	entries: &'a [Entry<M>],
+	hash_builder: &'a S,
+) -> impl 'a + Fn(&Indexes) -> u64
 where
 	S: BuildHasher,
 {
@@ -54,14 +60,14 @@ pub struct Indexes {
 	rep: usize,
 
 	/// Other indexes with this key.
-	other: Vec<usize>
+	other: Vec<usize>,
 }
 
 impl Indexes {
 	fn new(rep: usize) -> Self {
 		Self {
 			rep,
-			other: Vec::new()
+			other: Vec::new(),
 		}
 	}
 
@@ -90,7 +96,7 @@ impl Indexes {
 	}
 
 	/// Removes the given index, unless it is the last remaining index.
-	/// 
+	///
 	/// Returns `true` if the index has been removed or not in the list,
 	/// and `false` if it was the last index (and hence not removed).
 	fn remove(&mut self, index: usize) -> bool {
@@ -126,7 +132,7 @@ impl Indexes {
 	pub fn iter(&self) -> super::Indexes {
 		super::Indexes::Some {
 			first: Some(self.rep),
-			other: self.other.iter()
+			other: self.other.iter(),
 		}
 	}
 }
@@ -143,32 +149,38 @@ impl<'a> IntoIterator for &'a Indexes {
 #[derive(Clone)]
 pub struct IndexMap<S = DefaultHashBuilder> {
 	hash_builder: S,
-	table: RawTable<Indexes>
+	table: RawTable<Indexes>,
 }
 
 impl<S: Default> IndexMap<S> {
 	fn default() -> Self {
 		Self {
 			hash_builder: S::default(),
-			table: RawTable::default()
+			table: RawTable::default(),
 		}
 	}
 }
 
 impl<S> IndexMap<S> {
-	pub fn new() -> Self where S: Default {
+	pub fn new() -> Self
+	where
+		S: Default,
+	{
 		Self::default()
 	}
 }
 
 impl<S: BuildHasher> IndexMap<S> {
-	pub fn get<M, Q: ?Sized>(&self, entries: &[Entry<M>], key: &Q) -> Option<&Indexes> where Q: Hash + Equivalent<Key> {
+	pub fn get<M, Q: ?Sized>(&self, entries: &[Entry<M>], key: &Q) -> Option<&Indexes>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
 		let hash = make_insert_hash(&self.hash_builder, key);
 		self.table.get(hash, equivalent_key(entries, key))
 	}
 
 	/// Associates the given `key` to `index`.
-	/// 
+	///
 	/// Returns `true` if no index was already associated to the key.
 	pub fn insert<M>(&mut self, entries: &[Entry<M>], index: usize) -> bool {
 		let key = entries[index].key.value();
@@ -177,9 +189,13 @@ impl<S: BuildHasher> IndexMap<S> {
 			Some(indexes) => {
 				indexes.insert(index);
 				false
-			},
+			}
 			None => {
-				self.table.insert(hash, Indexes::new(index), make_hasher::<M, S>(entries, &self.hash_builder));
+				self.table.insert(
+					hash,
+					Indexes::new(index),
+					make_hasher::<M, S>(entries, &self.hash_builder),
+				);
 				true
 			}
 		}

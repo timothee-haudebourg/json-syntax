@@ -43,8 +43,8 @@ use locspan::Meta;
 use locspan_derive::*;
 
 pub mod object;
-mod unordered;
 pub mod parse;
+mod unordered;
 pub use parse::Parse;
 pub mod print;
 pub use print::Print;
@@ -83,7 +83,7 @@ pub enum Kind {
 	Number,
 	String,
 	Array,
-	Object
+	Object,
 }
 
 /// Value.
@@ -147,7 +147,7 @@ impl<M> Value<M> {
 			Self::Number(_) => Kind::Number,
 			Self::String(_) => Kind::String,
 			Self::Array(_) => Kind::Array,
-			Self::Object(_) => Kind::Object
+			Self::Object(_) => Kind::Object,
 		}
 	}
 
@@ -370,7 +370,7 @@ impl<M> Value<M> {
 				}
 				Ok(Value::Array(items))
 			}
-			Self::Object(o) => Ok(Value::Object(o.try_map_metadata(f)?))
+			Self::Object(o) => Ok(Value::Object(o.try_map_metadata(f)?)),
 		}
 	}
 }

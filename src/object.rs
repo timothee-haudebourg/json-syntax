@@ -1,14 +1,14 @@
-use locspan::Meta;
-use locspan_derive::*;
-use core::hash::{Hash, Hasher};
+use crate::Value;
 use core::cmp::Ordering;
 use core::fmt;
-use crate::Value;
+use core::hash::{Hash, Hasher};
+use locspan::Meta;
+use locspan_derive::*;
 
 mod index_map;
 
-use index_map::IndexMap;
 pub use index_map::Equivalent;
+use index_map::IndexMap;
 
 /// Object key stack capacity.
 ///
@@ -69,28 +69,22 @@ impl<M> Entry<M> {
 }
 
 /// Object.
-#[derive(
-	Clone,
-	StrippedPartialEq,
-	StrippedEq,
-	StrippedPartialOrd,
-	StrippedOrd,
-	StrippedHash,
-)]
+#[derive(Clone, StrippedPartialEq, StrippedEq, StrippedPartialOrd, StrippedOrd, StrippedHash)]
 #[stripped_ignore(M)]
 pub struct Object<M> {
 	/// The entries of the object, in order.
 	entries: Vec<Entry<M>>,
 
-	/// Maps each key to 
-	#[stripped_ignore] indexes: IndexMap
+	/// Maps each key to
+	#[stripped_ignore]
+	indexes: IndexMap,
 }
 
 impl<M> Default for Object<M> {
 	fn default() -> Self {
 		Self {
 			entries: Vec::new(),
-			indexes: IndexMap::new()
+			indexes: IndexMap::new(),
 		}
 	}
 }
@@ -106,10 +100,7 @@ impl<M> Object<M> {
 			indexes.insert(&entries, i);
 		}
 
-		Self {
-			entries,
-			indexes
-		}
+		Self { entries, indexes }
 	}
 
 	pub fn capacity(&self) -> usize {
@@ -133,59 +124,103 @@ impl<M> Object<M> {
 	}
 
 	/// Returns an iterator over the entries matching the given key.
-	/// 
+	///
 	/// Runs in `O(1)` (average).
-	pub fn get<Q: ?Sized>(&self, key: &Q) -> Values<M> where Q: Hash + Equivalent<Key> {
-		let indexes = self.indexes.get(&self.entries, key).map(IntoIterator::into_iter).unwrap_or_default();
+	pub fn get<Q: ?Sized>(&self, key: &Q) -> Values<M>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let indexes = self
+			.indexes
+			.get(&self.entries, key)
+			.map(IntoIterator::into_iter)
+			.unwrap_or_default();
 		Values {
 			indexes,
-			object: self
+			object: self,
 		}
 	}
 
 	/// Returns an iterator over the entries matching the given key.
-	/// 
+	///
 	/// Runs in `O(1)` (average).
-	pub fn get_entries<Q: ?Sized>(&self, key: &Q) -> Entries<M> where Q: Hash + Equivalent<Key> {
-		let indexes = self.indexes.get(&self.entries, key).map(IntoIterator::into_iter).unwrap_or_default();
+	pub fn get_entries<Q: ?Sized>(&self, key: &Q) -> Entries<M>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let indexes = self
+			.indexes
+			.get(&self.entries, key)
+			.map(IntoIterator::into_iter)
+			.unwrap_or_default();
 		Entries {
 			indexes,
-			object: self
+			object: self,
 		}
 	}
 
 	/// Returns an iterator over the entries matching the given key.
-	/// 
+	///
 	/// Runs in `O(1)` (average).
-	pub fn get_with_index<Q: ?Sized>(&self, key: &Q) -> ValuesWithIndex<M> where Q: Hash + Equivalent<Key> {
-		let indexes = self.indexes.get(&self.entries, key).map(IntoIterator::into_iter).unwrap_or_default();
+	pub fn get_with_index<Q: ?Sized>(&self, key: &Q) -> ValuesWithIndex<M>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let indexes = self
+			.indexes
+			.get(&self.entries, key)
+			.map(IntoIterator::into_iter)
+			.unwrap_or_default();
 		ValuesWithIndex {
 			indexes,
-			object: self
+			object: self,
 		}
 	}
 
 	/// Returns an iterator over the entries matching the given key.
-	/// 
+	///
 	/// Runs in `O(1)` (average).
-	pub fn get_entries_with_index<Q: ?Sized>(&self, key: &Q) -> EntriesWithIndex<M> where Q: Hash + Equivalent<Key> {
-		let indexes = self.indexes.get(&self.entries, key).map(IntoIterator::into_iter).unwrap_or_default();
+	pub fn get_entries_with_index<Q: ?Sized>(&self, key: &Q) -> EntriesWithIndex<M>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let indexes = self
+			.indexes
+			.get(&self.entries, key)
+			.map(IntoIterator::into_iter)
+			.unwrap_or_default();
 		EntriesWithIndex {
 			indexes,
-			object: self
+			object: self,
 		}
 	}
 
-	pub fn index_of<Q: ?Sized>(&self, key: &Q) -> Option<usize> where Q: Hash + Equivalent<Key> {
-		self.indexes.get(&self.entries, key).map(index_map::Indexes::first)
+	pub fn index_of<Q: ?Sized>(&self, key: &Q) -> Option<usize>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		self.indexes
+			.get(&self.entries, key)
+			.map(index_map::Indexes::first)
 	}
 
-	pub fn redundant_index_of<Q: ?Sized>(&self, key: &Q) -> Option<usize> where Q: Hash + Equivalent<Key> {
-		self.indexes.get(&self.entries, key).and_then(index_map::Indexes::redundant)
+	pub fn redundant_index_of<Q: ?Sized>(&self, key: &Q) -> Option<usize>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		self.indexes
+			.get(&self.entries, key)
+			.and_then(index_map::Indexes::redundant)
 	}
 
-	pub fn indexes_of<Q: ?Sized>(&self, key: &Q) -> Indexes where Q: Hash + Equivalent<Key> {
-		self.indexes.get(&self.entries, key).map(IntoIterator::into_iter).unwrap_or_default()
+	pub fn indexes_of<Q: ?Sized>(&self, key: &Q) -> Indexes
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		self.indexes
+			.get(&self.entries, key)
+			.map(IntoIterator::into_iter)
+			.unwrap_or_default()
 	}
 
 	pub fn first(&self) -> Option<&Entry<M>> {
@@ -197,12 +232,12 @@ impl<M> Object<M> {
 	}
 
 	/// Push the given key-value pair to the end of the object.
-	/// 
+	///
 	/// Returns `true` if the key was not already present in the object,
 	/// and `false` otherwise.
 	/// Any previous entry matching the key is **not** overridden: duplicates
 	/// are preserved, in order.
-	/// 
+	///
 	/// Runs in `O(1)`.
 	pub fn push(&mut self, key: Meta<Key, M>, value: Meta<Value<M>, M>) -> bool {
 		self.push_entry(Entry::new(key, value))
@@ -214,7 +249,7 @@ impl<M> Object<M> {
 		self.indexes.insert(&self.entries, index)
 	}
 
-	/// Removes the entry at the given index. 
+	/// Removes the entry at the given index.
 	pub fn remove_at(&mut self, index: usize) -> Option<Entry<M>> {
 		if index < self.entries.len() {
 			self.indexes.remove(&self.entries, index);
@@ -226,11 +261,15 @@ impl<M> Object<M> {
 	}
 
 	/// Inserts the given key-value pair.
-	/// 
+	///
 	/// If one or more entries are already matching the given key,
 	/// all of them are removed and returned in the resulting iterator.
 	/// Otherwise, `None` is returned.
-	pub fn insert(&mut self, key: Meta<Key, M>, value: Meta<Value<M>, M>) -> Option<RemovedByInsertion<M>> {
+	pub fn insert(
+		&mut self,
+		key: Meta<Key, M>,
+		value: Meta<Value<M>, M>,
+	) -> Option<RemovedByInsertion<M>> {
 		match self.index_of(key.value()) {
 			Some(index) => {
 				let mut entry = Entry::new(key, value);
@@ -238,7 +277,7 @@ impl<M> Object<M> {
 				Some(RemovedByInsertion {
 					index,
 					first: Some(entry),
-					object: self
+					object: self,
 				})
 			}
 			None => {
@@ -249,24 +288,26 @@ impl<M> Object<M> {
 	}
 
 	/// Remove all entries associated to the given key.
-	/// 
+	///
 	/// Runs in `O(n)` time (average).
-	pub fn remove<'q, Q: ?Sized>(&mut self, key: &'q Q) -> RemovedEntries<'_, 'q, M, Q> where Q: Hash + Equivalent<Key> {
-		RemovedEntries {
-			key,
-			object: self
-		}
+	pub fn remove<'q, Q: ?Sized>(&mut self, key: &'q Q) -> RemovedEntries<'_, 'q, M, Q>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		RemovedEntries { key, object: self }
 	}
 
 	/// Recursively maps the metadata inside the object.
 	pub fn map_metadata<N>(self, mut f: impl FnMut(M) -> N) -> Object<N> {
-		let entries = self.entries.into_iter()
+		let entries = self
+			.entries
+			.into_iter()
 			.map(|entry| entry.map_metadata(&mut f))
 			.collect();
 
 		Object {
 			entries,
-			indexes: self.indexes
+			indexes: self.indexes,
 		}
 	}
 
@@ -282,7 +323,7 @@ impl<M> Object<M> {
 
 		Ok(Object {
 			entries,
-			indexes: self.indexes
+			indexes: self.indexes,
 		})
 	}
 }
@@ -315,7 +356,9 @@ impl<M: Hash> Hash for Object<M> {
 
 impl<M: fmt::Debug> fmt::Debug for Object<M> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		f.debug_map().entries(self.entries.iter().map(Entry::as_pair)).finish()
+		f.debug_map()
+			.entries(self.entries.iter().map(Entry::as_pair))
+			.finish()
 	}
 }
 
@@ -344,7 +387,7 @@ impl<M> IntoIterator for Object<M> {
 }
 
 impl<M> Extend<Entry<M>> for Object<M> {
-	fn extend<I: IntoIterator<Item=Entry<M>>>(&mut self, iter: I) {
+	fn extend<I: IntoIterator<Item = Entry<M>>>(&mut self, iter: I) {
 		for entry in iter {
 			self.push_entry(entry);
 		}
@@ -352,7 +395,7 @@ impl<M> Extend<Entry<M>> for Object<M> {
 }
 
 impl<M> FromIterator<Entry<M>> for Object<M> {
-	fn from_iter<I: IntoIterator<Item=Entry<M>>>(iter: I) -> Self {
+	fn from_iter<I: IntoIterator<Item = Entry<M>>>(iter: I) -> Self {
 		let mut object = Object::default();
 		object.extend(iter);
 		object
@@ -360,7 +403,7 @@ impl<M> FromIterator<Entry<M>> for Object<M> {
 }
 
 impl<M> Extend<(Meta<Key, M>, Meta<Value<M>, M>)> for Object<M> {
-	fn extend<I: IntoIterator<Item=(Meta<Key, M>, Meta<Value<M>, M>)>>(&mut self, iter: I) {
+	fn extend<I: IntoIterator<Item = (Meta<Key, M>, Meta<Value<M>, M>)>>(&mut self, iter: I) {
 		for (key, value) in iter {
 			self.push(key, value);
 		}
@@ -368,7 +411,7 @@ impl<M> Extend<(Meta<Key, M>, Meta<Value<M>, M>)> for Object<M> {
 }
 
 impl<M> FromIterator<(Meta<Key, M>, Meta<Value<M>, M>)> for Object<M> {
-	fn from_iter<I: IntoIterator<Item=(Meta<Key, M>, Meta<Value<M>, M>)>>(iter: I) -> Self {
+	fn from_iter<I: IntoIterator<Item = (Meta<Key, M>, Meta<Value<M>, M>)>>(iter: I) -> Self {
 		let mut object = Object::default();
 		object.extend(iter);
 		object
@@ -378,9 +421,9 @@ impl<M> FromIterator<(Meta<Key, M>, Meta<Value<M>, M>)> for Object<M> {
 pub enum Indexes<'a> {
 	Some {
 		first: Option<usize>,
-		other: core::slice::Iter<'a, usize>
+		other: core::slice::Iter<'a, usize>,
 	},
-	None
+	None,
 }
 
 impl<'a> Default for Indexes<'a> {
@@ -396,9 +439,9 @@ impl<'a> Iterator for Indexes<'a> {
 		match self {
 			Self::Some { first, other } => match first.take() {
 				Some(index) => Some(index),
-				None => other.next().cloned()
-			}
-			Self::None => None
+				None => other.next().cloned(),
+			},
+			Self::None => None,
 		}
 	}
 }
@@ -414,10 +457,10 @@ macro_rules! entries_iter {
 				indexes: Indexes<$lft>,
 				object: &$lft Object<M>
 			}
-			
+
 			impl<$lft, M> Iterator for $id<$lft, M> {
 				type Item = $item;
-			
+
 				fn next(&mut $self) -> Option<Self::Item> {
 					$self.indexes.next().map(|$index| $e)
 				}
@@ -455,7 +498,7 @@ entries_iter! {
 pub struct RemovedByInsertion<'a, M> {
 	index: usize,
 	first: Option<Entry<M>>,
-	object: &'a mut Object<M>
+	object: &'a mut Object<M>,
 }
 
 impl<'a, M> Iterator for RemovedByInsertion<'a, M> {
@@ -466,9 +509,9 @@ impl<'a, M> Iterator for RemovedByInsertion<'a, M> {
 			Some(entry) => Some(entry),
 			None => {
 				let key = self.object.entries[self.index].key.value();
-				self.object.redundant_index_of(key).and_then(|index| {
-					self.object.remove_at(index)
-				})
+				self.object
+					.redundant_index_of(key)
+					.and_then(|index| self.object.remove_at(index))
 			}
 		}
 	}
@@ -480,22 +523,31 @@ impl<'a, M> Drop for RemovedByInsertion<'a, M> {
 	}
 }
 
-pub struct RemovedEntries<'a, 'q, M, Q: ?Sized> where Q: Hash + Equivalent<Key> {
+pub struct RemovedEntries<'a, 'q, M, Q: ?Sized>
+where
+	Q: Hash + Equivalent<Key>,
+{
 	key: &'q Q,
-	object: &'a mut Object<M>
+	object: &'a mut Object<M>,
 }
 
-impl<'a, 'q, M, Q: ?Sized> Iterator for RemovedEntries<'a, 'q, M, Q> where Q: Hash + Equivalent<Key> {
+impl<'a, 'q, M, Q: ?Sized> Iterator for RemovedEntries<'a, 'q, M, Q>
+where
+	Q: Hash + Equivalent<Key>,
+{
 	type Item = Entry<M>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		self.object.index_of(self.key).and_then(|index| {
-			self.object.remove_at(index)
-		})
+		self.object
+			.index_of(self.key)
+			.and_then(|index| self.object.remove_at(index))
 	}
 }
 
-impl<'a, 'q, M, Q: ?Sized> Drop for RemovedEntries<'a, 'q, M, Q> where Q: Hash + Equivalent<Key> {
+impl<'a, 'q, M, Q: ?Sized> Drop for RemovedEntries<'a, 'q, M, Q>
+where
+	Q: Hash + Equivalent<Key>,
+{
 	fn drop(&mut self) {
 		self.last();
 	}

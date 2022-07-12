@@ -1,4 +1,8 @@
-use json_syntax::{json, object::{Entry, Key}, Value};
+use json_syntax::{
+	json,
+	object::{Entry, Key},
+	Value,
+};
 use locspan::Meta;
 
 #[test]
