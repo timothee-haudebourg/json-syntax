@@ -264,6 +264,18 @@ pub trait Print {
 	fn fmt_with(&self, f: &mut fmt::Formatter, options: &Options, indent: usize) -> fmt::Result;
 }
 
+impl<T: Print, M> Print for locspan::Meta<T, M> {
+	fn fmt_with(&self, f: &mut fmt::Formatter, options: &Options, indent: usize) -> fmt::Result {
+		self.value().fmt_with(f, options, indent)
+	}
+}
+
+impl<'a, T: Print> Print for &'a T {
+	fn fmt_with(&self, f: &mut fmt::Formatter, options: &Options, indent: usize) -> fmt::Result {
+		(**self).fmt_with(f, options, indent)
+	}
+}
+
 pub trait PrintWithSize {
 	fn fmt_with_size(
 		&self,
@@ -273,6 +285,32 @@ pub trait PrintWithSize {
 		sizes: &[Size],
 		index: &mut usize,
 	) -> fmt::Result;
+}
+
+impl<T: PrintWithSize, M> PrintWithSize for locspan::Meta<T, M> {
+	fn fmt_with_size(
+		&self,
+		f: &mut fmt::Formatter,
+		options: &Options,
+		indent: usize,
+		sizes: &[Size],
+		index: &mut usize,
+	) -> fmt::Result {
+		self.value().fmt_with_size(f, options, indent, sizes, index)
+	}
+}
+
+impl<'a, T: PrintWithSize> PrintWithSize for &'a T {
+	fn fmt_with_size(
+		&self,
+		f: &mut fmt::Formatter,
+		options: &Options,
+		indent: usize,
+		sizes: &[Size],
+		index: &mut usize,
+	) -> fmt::Result {
+		(**self).fmt_with_size(f, options, indent, sizes, index)
+	}
 }
 
 /// Printed value.
@@ -337,7 +375,7 @@ pub fn string_literal(s: &str, f: &mut fmt::Formatter) -> fmt::Result {
 	f.write_str("\"")
 }
 
-fn printed_string_size(s: &str) -> usize {
+pub fn printed_string_size(s: &str) -> usize {
 	let mut width = 2;
 
 	for c in s.chars() {
@@ -358,6 +396,70 @@ impl Print for crate::String {
 	}
 }
 
+pub fn print_array<I: IntoIterator>(
+	items: I,
+	f: &mut fmt::Formatter,
+	options: &Options,
+	indent: usize,
+	sizes: &[Size],
+	index: &mut usize,
+) -> fmt::Result
+where
+	I::IntoIter: ExactSizeIterator,
+	I::Item: PrintWithSize,
+{
+	use fmt::Display;
+	let size = sizes[*index];
+	*index += 1;
+
+	f.write_str("[")?;
+
+	let items = items.into_iter();
+	if items.len() == 0 {
+		match size {
+			Size::Expanded => {
+				f.write_str("\n")?;
+				options.indent.by(indent).fmt(f)?;
+			}
+			Size::Width(_) => Spaces(options.array_empty).fmt(f)?,
+		}
+	} else {
+		match size {
+			Size::Expanded => {
+				f.write_str("\n")?;
+
+				for (i, item) in items.enumerate() {
+					if i > 0 {
+						Spaces(options.array_before_comma).fmt(f)?;
+						f.write_str(",\n")?
+					}
+
+					options.indent.by(indent + 1).fmt(f)?;
+					item.fmt_with_size(f, options, indent + 1, sizes, index)?
+				}
+
+				f.write_str("\n")?;
+				options.indent.by(indent).fmt(f)?;
+			}
+			Size::Width(_) => {
+				Spaces(options.array_begin).fmt(f)?;
+				for (i, item) in items.enumerate() {
+					if i > 0 {
+						Spaces(options.array_before_comma).fmt(f)?;
+						f.write_str(",")?;
+						Spaces(options.array_after_comma).fmt(f)?
+					}
+
+					item.fmt_with_size(f, options, indent + 1, sizes, index)?
+				}
+				Spaces(options.array_end).fmt(f)?
+			}
+		}
+	}
+
+	f.write_str("]")
+}
+
 impl<M> PrintWithSize for crate::Array<M> {
 	#[inline(always)]
 	fn fmt_with_size(
@@ -368,56 +470,83 @@ impl<M> PrintWithSize for crate::Array<M> {
 		sizes: &[Size],
 		index: &mut usize,
 	) -> fmt::Result {
-		use fmt::Display;
-		let size = sizes[*index];
-		*index += 1;
+		print_array(self, f, options, indent, sizes, index)
+	}
+}
 
-		f.write_str("[")?;
+pub fn print_object<'a, V, I: IntoIterator<Item = (&'a str, V)>>(
+	entries: I,
+	f: &mut fmt::Formatter,
+	options: &Options,
+	indent: usize,
+	sizes: &[Size],
+	index: &mut usize,
+) -> fmt::Result
+where
+	I::IntoIter: ExactSizeIterator,
+	V: PrintWithSize,
+{
+	use fmt::Display;
+	let size = sizes[*index];
+	*index += 1;
 
-		if self.is_empty() {
-			match size {
-				Size::Expanded => {
-					f.write_str("\n")?;
-					options.indent.by(indent).fmt(f)?;
-				}
-				Size::Width(_) => Spaces(options.array_empty).fmt(f)?,
+	f.write_str("{")?;
+
+	let entries = entries.into_iter();
+	if entries.len() == 0 {
+		match size {
+			Size::Expanded => {
+				f.write_str("\n")?;
+				options.indent.by(indent).fmt(f)?;
 			}
-		} else {
-			match size {
-				Size::Expanded => {
-					f.write_str("\n")?;
+			Size::Width(_) => Spaces(options.object_empty).fmt(f)?,
+		}
+	} else {
+		match size {
+			Size::Expanded => {
+				f.write_str("\n")?;
 
-					for (i, item) in self.iter().enumerate() {
-						if i > 0 {
-							Spaces(options.array_before_comma).fmt(f)?;
-							f.write_str(",\n")?
-						}
-
-						options.indent.by(indent + 1).fmt(f)?;
-						item.fmt_with_size(f, options, indent + 1, sizes, index)?
+				for (i, (key, value)) in entries.enumerate() {
+					if i > 0 {
+						Spaces(options.object_before_comma).fmt(f)?;
+						f.write_str(",\n")?
 					}
 
-					f.write_str("\n")?;
-					options.indent.by(indent).fmt(f)?;
-				}
-				Size::Width(_) => {
-					Spaces(options.array_begin).fmt(f)?;
-					for (i, item) in self.iter().enumerate() {
-						if i > 0 {
-							Spaces(options.array_before_comma).fmt(f)?;
-							f.write_str(",")?;
-							Spaces(options.array_after_comma).fmt(f)?
-						}
+					options.indent.by(indent + 1).fmt(f)?;
 
-						item.fmt_with_size(f, options, indent + 1, sizes, index)?
-					}
-					Spaces(options.array_end).fmt(f)?
+					string_literal(key, f)?;
+					Spaces(options.object_before_colon).fmt(f)?;
+					f.write_str(":")?;
+					Spaces(options.object_after_colon).fmt(f)?;
+
+					value.fmt_with_size(f, options, indent + 1, sizes, index)?
 				}
+
+				f.write_str("\n")?;
+				options.indent.by(indent).fmt(f)?;
+			}
+			Size::Width(_) => {
+				Spaces(options.object_begin).fmt(f)?;
+				for (i, (key, value)) in entries.enumerate() {
+					if i > 0 {
+						Spaces(options.object_before_comma).fmt(f)?;
+						f.write_str(",")?;
+						Spaces(options.object_after_comma).fmt(f)?
+					}
+
+					string_literal(key, f)?;
+					Spaces(options.object_before_colon).fmt(f)?;
+					f.write_str(":")?;
+					Spaces(options.object_after_colon).fmt(f)?;
+
+					value.fmt_with_size(f, options, indent + 1, sizes, index)?
+				}
+				Spaces(options.object_end).fmt(f)?
 			}
 		}
-
-		f.write_str("]")
 	}
+
+	f.write_str("}")
 }
 
 impl<M> PrintWithSize for crate::Object<M> {
@@ -430,112 +559,83 @@ impl<M> PrintWithSize for crate::Object<M> {
 		sizes: &[Size],
 		index: &mut usize,
 	) -> fmt::Result {
-		use fmt::Display;
-		let size = sizes[*index];
-		*index += 1;
-
-		f.write_str("{")?;
-
-		if self.is_empty() {
-			match size {
-				Size::Expanded => {
-					f.write_str("\n")?;
-					options.indent.by(indent).fmt(f)?;
-				}
-				Size::Width(_) => Spaces(options.object_empty).fmt(f)?,
-			}
-		} else {
-			match size {
-				Size::Expanded => {
-					f.write_str("\n")?;
-
-					for (i, entry) in self.iter().enumerate() {
-						if i > 0 {
-							Spaces(options.object_before_comma).fmt(f)?;
-							f.write_str(",\n")?
-						}
-
-						options.indent.by(indent + 1).fmt(f)?;
-
-						string_literal(&entry.key, f)?;
-						Spaces(options.object_before_colon).fmt(f)?;
-						f.write_str(":")?;
-						Spaces(options.object_after_colon).fmt(f)?;
-
-						entry
-							.value
-							.fmt_with_size(f, options, indent + 1, sizes, index)?
-					}
-
-					f.write_str("\n")?;
-					options.indent.by(indent).fmt(f)?;
-				}
-				Size::Width(_) => {
-					Spaces(options.object_begin).fmt(f)?;
-					for (i, entry) in self.iter().enumerate() {
-						if i > 0 {
-							Spaces(options.object_before_comma).fmt(f)?;
-							f.write_str(",")?;
-							Spaces(options.object_after_comma).fmt(f)?
-						}
-
-						string_literal(&entry.key, f)?;
-						Spaces(options.object_before_colon).fmt(f)?;
-						f.write_str(":")?;
-						Spaces(options.object_after_colon).fmt(f)?;
-
-						entry
-							.value
-							.fmt_with_size(f, options, indent + 1, sizes, index)?
-					}
-					Spaces(options.object_end).fmt(f)?
-				}
-			}
-		}
-
-		f.write_str("}")
+		print_object(
+			self.iter().map(|e| (e.key.as_str(), &e.value)),
+			f,
+			options,
+			indent,
+			sizes,
+			index,
+		)
 	}
 }
 
-fn pre_compute_size<M>(value: &crate::Value<M>, options: &Options, sizes: &mut Vec<Size>) -> Size {
-	match value {
-		crate::Value::Null => Size::Width(4),
-		crate::Value::Boolean(true) => Size::Width(4),
-		crate::Value::Boolean(false) => Size::Width(5),
-		crate::Value::Number(n) => Size::Width(n.as_str().len()),
-		crate::Value::String(s) => Size::Width(printed_string_size(s)),
-		crate::Value::Array(a) => {
-			let index = sizes.len();
-			sizes.push(Size::Width(0));
-			let size = pre_compute_array_size(a, options, sizes);
-			sizes[index] = size;
-			size
-		}
-		crate::Value::Object(o) => {
-			let index = sizes.len();
-			sizes.push(Size::Width(0));
-			let size = pre_compute_object_size(o, options, sizes);
-			sizes[index] = size;
-			size
+pub trait PrecomputeSize {
+	fn pre_compute_size(&self, options: &Options, sizes: &mut Vec<Size>) -> Size;
+}
+
+impl<M> PrecomputeSize for crate::Value<M> {
+	fn pre_compute_size(&self, options: &Options, sizes: &mut Vec<Size>) -> Size {
+		match self {
+			crate::Value::Null => Size::Width(4),
+			crate::Value::Boolean(true) => Size::Width(4),
+			crate::Value::Boolean(false) => Size::Width(5),
+			crate::Value::Number(n) => Size::Width(n.as_str().len()),
+			crate::Value::String(s) => Size::Width(printed_string_size(s)),
+			crate::Value::Array(a) => {
+				let index = sizes.len();
+				sizes.push(Size::Width(0));
+				let size = pre_compute_array_size(a, options, sizes);
+				sizes[index] = size;
+				size
+			}
+			crate::Value::Object(o) => {
+				let index = sizes.len();
+				sizes.push(Size::Width(0));
+				let size = pre_compute_object_size(
+					o.iter().map(|e| (e.key.as_str(), &e.value)),
+					options,
+					sizes,
+				);
+				sizes[index] = size;
+				size
+			}
 		}
 	}
 }
 
-fn pre_compute_array_size<M>(
-	array: &crate::Array<M>,
+impl<'a, T: PrecomputeSize> PrecomputeSize for &'a T {
+	fn pre_compute_size(&self, options: &Options, sizes: &mut Vec<Size>) -> Size {
+		(**self).pre_compute_size(options, sizes)
+	}
+}
+
+impl<T: PrecomputeSize, M> PrecomputeSize for locspan::Meta<T, M> {
+	fn pre_compute_size(&self, options: &Options, sizes: &mut Vec<Size>) -> Size {
+		self.value().pre_compute_size(options, sizes)
+	}
+}
+
+fn pre_compute_array_size<I: IntoIterator>(
+	items: I,
 	options: &Options,
 	sizes: &mut Vec<Size>,
-) -> Size {
+) -> Size
+where
+	I::Item: PrecomputeSize,
+{
 	let mut size = Size::Width(2 + options.object_begin + options.object_end);
 
-	for (i, item) in array.iter().enumerate() {
+	let mut len = 0;
+	for (i, item) in items.into_iter().enumerate() {
 		if i > 0 {
 			size.add(Size::Width(
 				1 + options.array_before_comma + options.array_after_comma,
 			));
 		}
 
-		size.add(pre_compute_size(item, options, sizes));
+		size.add(item.pre_compute_size(options, sizes));
+		len += 1
 	}
 
 	match size {
@@ -544,14 +644,14 @@ fn pre_compute_array_size<M>(
 			None => Size::Width(width),
 			Some(Limit::Always) => Size::Expanded,
 			Some(Limit::Item(i)) => {
-				if array.len() > i {
+				if len > i {
 					Size::Expanded
 				} else {
 					Size::Width(width)
 				}
 			}
 			Some(Limit::ItemOrWidth(i, w)) => {
-				if array.len() > i || width > w {
+				if len > i || width > w {
 					Size::Expanded
 				} else {
 					Size::Width(width)
@@ -568,14 +668,18 @@ fn pre_compute_array_size<M>(
 	}
 }
 
-fn pre_compute_object_size<M>(
-	object: &crate::Object<M>,
+fn pre_compute_object_size<'a, V, I: IntoIterator<Item = (&'a str, V)>>(
+	entries: I,
 	options: &Options,
 	sizes: &mut Vec<Size>,
-) -> Size {
+) -> Size
+where
+	V: PrecomputeSize,
+{
 	let mut size = Size::Width(2 + options.object_begin + options.object_end);
 
-	for (i, entry) in object.iter().enumerate() {
+	let mut len = 0;
+	for (i, (key, value)) in entries.into_iter().enumerate() {
 		if i > 0 {
 			size.add(Size::Width(
 				1 + options.object_before_comma + options.object_after_comma,
@@ -583,11 +687,10 @@ fn pre_compute_object_size<M>(
 		}
 
 		size.add(Size::Width(
-			printed_string_size(&entry.key)
-				+ 1 + options.object_before_colon
-				+ options.object_after_colon,
+			printed_string_size(key) + 1 + options.object_before_colon + options.object_after_colon,
 		));
-		size.add(pre_compute_size(&entry.value, options, sizes));
+		size.add(value.pre_compute_size(options, sizes));
+		len += 1;
 	}
 
 	match size {
@@ -596,14 +699,14 @@ fn pre_compute_object_size<M>(
 			None => Size::Width(width),
 			Some(Limit::Always) => Size::Expanded,
 			Some(Limit::Item(i)) => {
-				if object.len() > i {
+				if len > i {
 					Size::Expanded
 				} else {
 					Size::Width(width)
 				}
 			}
 			Some(Limit::ItemOrWidth(i, w)) => {
-				if object.len() > i || width > w {
+				if len > i || width > w {
 					Size::Expanded
 				} else {
 					Size::Width(width)
@@ -629,13 +732,13 @@ impl<M> Print for crate::Value<M> {
 			Self::String(s) => s.fmt_with(f, options, indent),
 			Self::Array(a) => {
 				let mut sizes = Vec::with_capacity(self.count(|v| v.is_array() || v.is_object()));
-				pre_compute_size(self, options, &mut sizes);
+				self.pre_compute_size(options, &mut sizes);
 				let mut index = 0;
 				a.fmt_with_size(f, options, indent, &sizes, &mut index)
 			}
 			Self::Object(o) => {
 				let mut sizes = Vec::with_capacity(self.count(|v| v.is_array() || v.is_object()));
-				pre_compute_size(self, options, &mut sizes);
+				self.pre_compute_size(options, &mut sizes);
 				let mut index = 0;
 				o.fmt_with_size(f, options, indent, &sizes, &mut index)
 			}

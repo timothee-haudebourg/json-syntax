@@ -18,7 +18,7 @@
 /// Variables or expressions can be interpolated into the JSON literal.
 ///
 /// ```
-/// # use json_syntax::{Value, Key, json};
+/// # use json_syntax::{Value, object::Key, json};
 /// # use locspan::Meta;
 /// let code = 200;
 /// let features = vec!["json", "syntax"];
@@ -365,7 +365,7 @@ macro_rules! json {
 	};
 
 	({} @ $meta:expr) => {
-		::locspan::Meta($crate::Value::Object(json_vec![]), $meta)
+		::locspan::Meta($crate::Value::Object($crate::Object::new()), $meta)
 	};
 
 	({}) => {

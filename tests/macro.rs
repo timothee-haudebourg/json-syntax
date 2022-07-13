@@ -1,7 +1,7 @@
 use json_syntax::{
 	json,
 	object::{Entry, Key},
-	Value,
+	Object, Value,
 };
 use locspan::Meta;
 
@@ -47,7 +47,7 @@ fn macro_05() {
 		{}
 	};
 
-	assert_eq!(value, Meta(Value::Object(vec![]), ()))
+	assert_eq!(value, Meta(Value::Object(Object::default()), ()))
 }
 
 #[test]
@@ -68,10 +68,7 @@ fn macro_07() {
 	assert_eq!(
 		value,
 		Meta(
-			Value::Object(vec![Entry::new(
-				Meta("foo".into(), ()),
-				Meta(Value::Null, ())
-			)]),
+			Value::Object(vec![Entry::new(Meta("foo".into(), ()), Meta(Value::Null, ()))].into()),
 			()
 		)
 	)
@@ -115,10 +112,10 @@ fn macro_10() {
 	assert_eq!(
 		value,
 		Meta(
-			Value::Object(vec![
+			Value::Object(Object::from_vec(vec![
 				Entry::new(Meta("a".into(), ()), Meta(Value::Boolean(true), ())),
 				Entry::new(Meta("b".into(), ()), Meta(Value::Boolean(false), ()))
-			]),
+			])),
 			()
 		)
 	)
@@ -136,10 +133,10 @@ fn macro_11() {
 	assert_eq!(
 		value,
 		Meta(
-			Value::Object(vec![
+			Value::Object(Object::from_vec(vec![
 				Entry::new(Meta("a".into(), ()), Meta(Value::Boolean(true), ())),
 				Entry::new(Meta("b".into(), ()), Meta(Value::Boolean(false), ()))
-			]),
+			])),
 			()
 		)
 	)
@@ -157,11 +154,14 @@ fn macro_12() {
 	assert_eq!(
 		value,
 		Meta(
-			Value::Object(vec![
+			Value::Object(Object::from_vec(vec![
 				Entry::new(Meta("a".into(), ()), Meta(Value::Boolean(true), ())),
-				Entry::new(Meta("b".into(), ()), Meta(Value::Object(vec![]), ())),
+				Entry::new(
+					Meta("b".into(), ()),
+					Meta(Value::Object(Object::default()), ())
+				),
 				Entry::new(Meta("c".into(), ()), Meta(Value::Boolean(false), ()))
-			]),
+			])),
 			()
 		)
 	)
@@ -179,11 +179,14 @@ fn macro_13() {
 	assert_eq!(
 		value,
 		Meta(
-			Value::Object(vec![
+			Value::Object(Object::from_vec(vec![
 				Entry::new(Meta("a".into(), 1), Meta(Value::Boolean(true), 2)),
-				Entry::new(Meta("b".into(), 3), Meta(Value::Object(vec![]), 4)),
+				Entry::new(
+					Meta("b".into(), 3),
+					Meta(Value::Object(Object::default()), 4)
+				),
 				Entry::new(Meta("c".into(), 5), Meta(Value::Boolean(false), 6))
-			]),
+			])),
 			7
 		)
 	)
@@ -198,7 +201,7 @@ fn macro_14() {
 	assert_eq!(
 		value,
 		Meta(
-			Value::Object(vec![
+			Value::Object(Object::from_vec(vec![
 				Entry::new(
 					Meta("a".into(), ()),
 					Meta(Value::Number(0.1f32.try_into().unwrap()), ())
@@ -207,7 +210,7 @@ fn macro_14() {
 					Meta("b".into(), ()),
 					Meta(Value::Number(1.1e10f32.try_into().unwrap()), ())
 				)
-			]),
+			])),
 			()
 		)
 	)
