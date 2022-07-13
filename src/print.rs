@@ -616,7 +616,7 @@ impl<T: PrecomputeSize, M> PrecomputeSize for locspan::Meta<T, M> {
 	}
 }
 
-fn pre_compute_array_size<I: IntoIterator>(
+pub fn pre_compute_array_size<I: IntoIterator>(
 	items: I,
 	options: &Options,
 	sizes: &mut Vec<Size>,
@@ -668,7 +668,7 @@ where
 	}
 }
 
-fn pre_compute_object_size<'a, V, I: IntoIterator<Item = (&'a str, V)>>(
+pub fn pre_compute_object_size<'a, V, I: IntoIterator<Item = (&'a str, V)>>(
 	entries: I,
 	options: &Options,
 	sizes: &mut Vec<Size>,
