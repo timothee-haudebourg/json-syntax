@@ -460,7 +460,7 @@ where
 	f.write_str("]")
 }
 
-impl<M> PrintWithSize for crate::Array<M> {
+impl<T: PrintWithSize> PrintWithSize for Vec<T> {
 	#[inline(always)]
 	fn fmt_with_size(
 		&self,
