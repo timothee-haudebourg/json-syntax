@@ -592,24 +592,12 @@ impl<M> PrecomputeSize for crate::Value<M> {
 			crate::Value::Boolean(b) => b.pre_compute_size(options, sizes),
 			crate::Value::Number(n) => Size::Width(n.as_str().len()),
 			crate::Value::String(s) => Size::Width(printed_string_size(s)),
-			crate::Value::Array(a) => {
-				let index = sizes.len();
-				sizes.push(Size::Width(0));
-				let size = pre_compute_array_size(a, options, sizes);
-				sizes[index] = size;
-				size
-			}
-			crate::Value::Object(o) => {
-				let index = sizes.len();
-				sizes.push(Size::Width(0));
-				let size = pre_compute_object_size(
-					o.iter().map(|e| (e.key.as_str(), &e.value)),
-					options,
-					sizes,
-				);
-				sizes[index] = size;
-				size
-			}
+			crate::Value::Array(a) => pre_compute_array_size(a, options, sizes),
+			crate::Value::Object(o) => pre_compute_object_size(
+				o.iter().map(|e| (e.key.as_str(), &e.value)),
+				options,
+				sizes,
+			),
 		}
 	}
 }
@@ -634,6 +622,9 @@ pub fn pre_compute_array_size<I: IntoIterator>(
 where
 	I::Item: PrecomputeSize,
 {
+	let index = sizes.len();
+	sizes.push(Size::Width(0));
+
 	let mut size = Size::Width(2 + options.object_begin + options.object_end);
 
 	let mut len = 0;
@@ -648,7 +639,7 @@ where
 		len += 1
 	}
 
-	match size {
+	let size = match size {
 		Size::Expanded => Size::Expanded,
 		Size::Width(width) => match options.array_limit {
 			None => Size::Width(width),
@@ -675,7 +666,10 @@ where
 				}
 			}
 		},
-	}
+	};
+
+	sizes[index] = size;
+	size
 }
 
 pub fn pre_compute_object_size<'a, V, I: IntoIterator<Item = (&'a str, V)>>(
@@ -686,6 +680,9 @@ pub fn pre_compute_object_size<'a, V, I: IntoIterator<Item = (&'a str, V)>>(
 where
 	V: PrecomputeSize,
 {
+	let index = sizes.len();
+	sizes.push(Size::Width(0));
+
 	let mut size = Size::Width(2 + options.object_begin + options.object_end);
 
 	let mut len = 0;
@@ -703,7 +700,7 @@ where
 		len += 1;
 	}
 
-	match size {
+	let size = match size {
 		Size::Expanded => Size::Expanded,
 		Size::Width(width) => match options.object_limit {
 			None => Size::Width(width),
@@ -730,7 +727,10 @@ where
 				}
 			}
 		},
-	}
+	};
+
+	sizes[index] = size;
+	size
 }
 
 impl<M> Print for crate::Value<M> {
