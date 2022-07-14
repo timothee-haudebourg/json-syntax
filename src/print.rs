@@ -574,12 +574,22 @@ pub trait PrecomputeSize {
 	fn pre_compute_size(&self, options: &Options, sizes: &mut Vec<Size>) -> Size;
 }
 
+impl PrecomputeSize for bool {
+	#[inline(always)]
+	fn pre_compute_size(&self, _options: &Options, _sizes: &mut Vec<Size>) -> Size {
+		if *self {
+			Size::Width(4)
+		} else {
+			Size::Width(5)
+		}
+	}
+}
+
 impl<M> PrecomputeSize for crate::Value<M> {
 	fn pre_compute_size(&self, options: &Options, sizes: &mut Vec<Size>) -> Size {
 		match self {
 			crate::Value::Null => Size::Width(4),
-			crate::Value::Boolean(true) => Size::Width(4),
-			crate::Value::Boolean(false) => Size::Width(5),
+			crate::Value::Boolean(b) => b.pre_compute_size(options, sizes),
 			crate::Value::Number(n) => Size::Width(n.as_str().len()),
 			crate::Value::String(s) => Size::Width(printed_string_size(s)),
 			crate::Value::Array(a) => {
