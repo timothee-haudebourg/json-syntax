@@ -2594,3 +2594,8 @@ fn y_structure_whitespace_array() {
 		Options::strict(),
 	)
 }
+
+#[test]
+fn y_issue_1() {
+	test("tests/inputs/y_issue_1.json", Options::strict())
+}

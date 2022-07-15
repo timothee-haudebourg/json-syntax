@@ -128,11 +128,11 @@ impl<F: Clone> Parse<F> for Value<Location<F>> {
 							stack.push(Item::Array(Loc(array, loc.with(value_span))));
 						}
 						Meta(Fragment::BeginArray, value_loc) => {
-							stack.push(Item::Array(Loc(array, loc.with(value_loc.span()))));
+							stack.push(Item::ArrayItem(Loc(array, loc.with(value_loc.span()))));
 							stack.push(Item::ArrayItem(Loc(Array::new(), value_loc)))
 						}
 						Meta(Fragment::BeginObject(value_key), value_loc) => {
-							stack.push(Item::Array(Loc(array, loc.with(value_loc.span()))));
+							stack.push(Item::ArrayItem(Loc(array, loc.with(value_loc.span()))));
 							stack.push(Item::ObjectEntry(Loc(Object::new(), value_loc), value_key))
 						}
 					}
