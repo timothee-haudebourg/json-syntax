@@ -41,6 +41,7 @@
 pub use json_number::Number;
 use locspan::Meta;
 use locspan_derive::*;
+use std::fmt;
 
 pub mod object;
 pub mod parse;
@@ -84,6 +85,19 @@ pub enum Kind {
 	String,
 	Array,
 	Object,
+}
+
+impl fmt::Display for Kind {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Null => write!(f, "null"),
+			Self::Boolean => write!(f, "boolean"),
+			Self::Number => write!(f, "number"),
+			Self::String => write!(f, "string"),
+			Self::Array => write!(f, "array"),
+			Self::Object => write!(f, "object"),
+		}
+	}
 }
 
 /// Value.

@@ -1,6 +1,7 @@
 use crate::Value;
 use decoded_char::DecodedChar;
 use locspan::{Loc, Location, Span};
+use std::fmt;
 use std::iter::Peekable;
 
 mod array;
@@ -234,6 +235,19 @@ impl<E, F> Error<E, F> {
 	fn unexpected(c: Option<char>) -> Self {
 		// panic!("unexpected {:?}", c);
 		Self::Unexpected(c)
+	}
+}
+
+impl<E: fmt::Display, F> fmt::Display for Error<E, F> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Stream(e) => e.fmt(f),
+			Self::Unexpected(Some(c)) => write!(f, "unexpected character `{}`", c),
+			Self::Unexpected(None) => write!(f, "unexpected end of file"),
+			Self::InvalidUnicodeCodePoint(c) => write!(f, "invalid Unicode code point {:x}", *c),
+			Self::MissingLowSurrogate(_) => write!(f, "missing low surrogate"),
+			Self::InvalidLowSurrogate(_, _) => write!(f, "invalid low surrogate"),
+		}
 	}
 }
 
