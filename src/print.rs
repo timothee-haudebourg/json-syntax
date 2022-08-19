@@ -264,6 +264,12 @@ pub trait Print {
 	fn fmt_with(&self, f: &mut fmt::Formatter, options: &Options, indent: usize) -> fmt::Result;
 }
 
+impl<T: Print> Print for locspan::Stripped<T> {
+	fn fmt_with(&self, f: &mut fmt::Formatter, options: &Options, indent: usize) -> fmt::Result {
+		self.0.fmt_with(f, options, indent)
+	}
+}
+
 impl<T: Print, M> Print for locspan::Meta<T, M> {
 	fn fmt_with(&self, f: &mut fmt::Formatter, options: &Options, indent: usize) -> fmt::Result {
 		self.value().fmt_with(f, options, indent)
@@ -285,6 +291,19 @@ pub trait PrintWithSize {
 		sizes: &[Size],
 		index: &mut usize,
 	) -> fmt::Result;
+}
+
+impl<T: PrintWithSize> PrintWithSize for locspan::Stripped<T> {
+	fn fmt_with_size(
+		&self,
+		f: &mut fmt::Formatter,
+		options: &Options,
+		indent: usize,
+		sizes: &[Size],
+		index: &mut usize,
+	) -> fmt::Result {
+		self.0.fmt_with_size(f, options, indent, sizes, index)
+	}
 }
 
 impl<T: PrintWithSize, M> PrintWithSize for locspan::Meta<T, M> {
@@ -605,6 +624,12 @@ impl<M> PrecomputeSize for crate::Value<M> {
 impl<'a, T: PrecomputeSize> PrecomputeSize for &'a T {
 	fn pre_compute_size(&self, options: &Options, sizes: &mut Vec<Size>) -> Size {
 		(**self).pre_compute_size(options, sizes)
+	}
+}
+
+impl<T: PrecomputeSize> PrecomputeSize for locspan::Stripped<T> {
+	fn pre_compute_size(&self, options: &Options, sizes: &mut Vec<Size>) -> Size {
+		self.0.pre_compute_size(options, sizes)
 	}
 }
 
