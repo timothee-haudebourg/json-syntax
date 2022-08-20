@@ -41,6 +41,7 @@
 pub use json_number::Number;
 use locspan::Meta;
 use locspan_derive::*;
+use smallvec::SmallVec;
 use std::fmt;
 
 pub mod object;
@@ -320,25 +321,15 @@ impl<M> Value<M> {
 		}
 	}
 
+	pub fn traverse(&self) -> Traverse<M> {
+		let mut stack = SmallVec::new();
+		stack.push(self);
+		Traverse { stack }
+	}
+
 	/// Recursively count the number of values for which `f` returns `true`.
-	pub fn count(&self, f: impl Clone + Fn(&Self) -> bool) -> usize {
-		let mut result = if f(self) { 1 } else { 0 };
-
-		match self {
-			Self::Array(array) => {
-				for item in array {
-					result += item.count(f.clone())
-				}
-			}
-			Self::Object(object) => {
-				for entry in object {
-					result += entry.value.count(f.clone())
-				}
-			}
-			_ => (),
-		}
-
-		result
+	pub fn count(&self, mut f: impl FnMut(&Self) -> bool) -> usize {
+		self.traverse().filter(|v| f(*v)).count()
 	}
 
 	/// Returns the volume of the value.
@@ -346,9 +337,9 @@ impl<M> Value<M> {
 	/// The volume is the sum of all values and recursively nested values
 	/// included in `self`, including `self` (the volume is at least `1`).
 	///
-	/// This is equivalent to `value.count(|_| true)`.
+	/// This is equivalent to `value.traverse().count()` or `value.count(|_| true)`.
 	pub fn volume(&self) -> usize {
-		self.count(|_| true)
+		self.traverse().count()
 	}
 
 	/// Recursively maps the metadata inside the value.
@@ -386,6 +377,18 @@ impl<M> Value<M> {
 			}
 			Self::Object(o) => Ok(Value::Object(o.try_map_metadata(f)?)),
 		}
+	}
+}
+
+pub trait TraverseWithMetadata<M> {
+	fn traverse_with_metadata(&self) -> MetaTraverse<M>;
+}
+
+impl<M> TraverseWithMetadata<M> for Meta<Value<M>, M> {
+	fn traverse_with_metadata(&self) -> MetaTraverse<M> {
+		let mut stack = SmallVec::new();
+		stack.push(self);
+		MetaTraverse { stack }
 	}
 }
 
@@ -496,4 +499,52 @@ macro_rules! try_from_float {
 try_from_float! {
 	f32,
 	f64
+}
+
+pub struct Traverse<'a, M> {
+	stack: SmallVec<[&'a Value<M>; 8]>,
+}
+
+impl<'a, M> Iterator for Traverse<'a, M> {
+	type Item = &'a Value<M>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match self.stack.pop() {
+			Some(v) => {
+				match v {
+					Value::Array(a) => self.stack.extend(a.iter().rev().map(Meta::value)),
+					Value::Object(o) => self.stack.extend(o.iter().rev().map(|e| e.value.value())),
+					_ => (),
+				}
+
+				Some(v)
+			}
+			None => None,
+		}
+	}
+}
+
+pub struct MetaTraverse<'a, M> {
+	stack: SmallVec<[&'a Meta<Value<M>, M>; 8]>,
+}
+
+impl<'a, M> Iterator for MetaTraverse<'a, M> {
+	type Item = &'a Meta<Value<M>, M>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match self.stack.pop() {
+			Some(v) => {
+				match v {
+					Meta(Value::Array(a), _) => self.stack.extend(a.iter().rev()),
+					Meta(Value::Object(o), _) => {
+						self.stack.extend(o.iter().rev().map(|e| &e.value))
+					}
+					_ => (),
+				}
+
+				Some(v)
+			}
+			None => None,
+		}
+	}
 }
