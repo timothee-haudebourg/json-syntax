@@ -505,10 +505,15 @@ try_from_float! {
 
 pub enum StrippedFragmentRef<'a, M> {
 	Value(&'a Value<M>),
+	Entry(&'a object::Entry<M>),
 	Key(&'a object::Key),
 }
 
 impl<'a, M> StrippedFragmentRef<'a, M> {
+	pub fn is_entry(&self) -> bool {
+		matches!(self, Self::Entry(_))
+	}
+
 	pub fn is_key(&self) -> bool {
 		matches!(self, Self::Key(_))
 	}
@@ -542,6 +547,7 @@ impl<'a, M> Clone for StrippedFragmentRef<'a, M> {
 	fn clone(&self) -> Self {
 		match self {
 			Self::Value(v) => Self::Value(*v),
+			Self::Entry(e) => Self::Entry(e),
 			Self::Key(k) => Self::Key(k),
 		}
 	}
@@ -553,7 +559,8 @@ impl<'a, M> StrippedFragmentRef<'a, M> {
 	pub fn sub_fragments(&self) -> SubFragments<'a, M> {
 		match self {
 			Self::Value(Value::Array(a)) => SubFragments::Array(a.iter()),
-			Self::Value(Value::Object(o)) => SubFragments::Object(None, o.iter()),
+			Self::Value(Value::Object(o)) => SubFragments::Object(o.iter()),
+			Self::Entry(e) => SubFragments::Entry(Some(&e.key), Some(&e.value)),
 			_ => SubFragments::None,
 		}
 	}
@@ -561,10 +568,15 @@ impl<'a, M> StrippedFragmentRef<'a, M> {
 
 pub enum FragmentRef<'a, M> {
 	Value(&'a Meta<Value<M>, M>),
+	Entry(&'a object::Entry<M>),
 	Key(&'a Meta<object::Key, M>),
 }
 
 impl<'a, M> FragmentRef<'a, M> {
+	pub fn is_entry(&self) -> bool {
+		matches!(self, Self::Entry(_))
+	}
+
 	pub fn is_key(&self) -> bool {
 		matches!(self, Self::Key(_))
 	}
@@ -596,6 +608,7 @@ impl<'a, M> FragmentRef<'a, M> {
 	pub fn strip(self) -> StrippedFragmentRef<'a, M> {
 		match self {
 			Self::Value(v) => StrippedFragmentRef::Value(v.value()),
+			Self::Entry(e) => StrippedFragmentRef::Entry(e),
 			Self::Key(k) => StrippedFragmentRef::Key(k.value()),
 		}
 	}
@@ -613,6 +626,7 @@ impl<'a, M> Clone for FragmentRef<'a, M> {
 	fn clone(&self) -> Self {
 		match self {
 			Self::Value(v) => Self::Value(*v),
+			Self::Entry(e) => Self::Entry(e),
 			Self::Key(k) => Self::Key(*k),
 		}
 	}
@@ -624,7 +638,8 @@ impl<'a, M> FragmentRef<'a, M> {
 	pub fn sub_fragments(&self) -> SubFragments<'a, M> {
 		match self {
 			Self::Value(Meta(Value::Array(a), _)) => SubFragments::Array(a.iter()),
-			Self::Value(Meta(Value::Object(o), _)) => SubFragments::Object(None, o.iter()),
+			Self::Value(Meta(Value::Object(o), _)) => SubFragments::Object(o.iter()),
+			Self::Entry(e) => SubFragments::Entry(Some(&e.key), Some(&e.value)),
 			_ => SubFragments::None,
 		}
 	}
@@ -633,9 +648,10 @@ impl<'a, M> FragmentRef<'a, M> {
 pub enum SubFragments<'a, M> {
 	None,
 	Array(core::slice::Iter<'a, Meta<Value<M>, M>>),
-	Object(
+	Object(core::slice::Iter<'a, object::Entry<M>>),
+	Entry(
+		Option<&'a Meta<object::Key, M>>,
 		Option<&'a Meta<Value<M>, M>>,
-		core::slice::Iter<'a, object::Entry<M>>,
 	),
 }
 
@@ -646,16 +662,11 @@ impl<'a, M> Iterator for SubFragments<'a, M> {
 		match self {
 			Self::None => None,
 			Self::Array(a) => a.next().map(FragmentRef::Value),
-			Self::Object(back, e) => match back.take() {
-				Some(value) => Some(FragmentRef::Value(value)),
-				None => match e.next() {
-					Some(entry) => {
-						*back = Some(&entry.value);
-						Some(FragmentRef::Key(&entry.key))
-					}
-					None => None,
-				},
-			},
+			Self::Object(e) => e.next().map(FragmentRef::Entry),
+			Self::Entry(k, v) => k
+				.take()
+				.map(FragmentRef::Key)
+				.or_else(|| v.take().map(FragmentRef::Value)),
 		}
 	}
 }
