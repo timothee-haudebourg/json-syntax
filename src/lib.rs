@@ -321,15 +321,15 @@ impl<M> Value<M> {
 		}
 	}
 
-	pub fn traverse(&self) -> Traverse<M> {
+	pub fn traverse(&self) -> TraverseStripped<M> {
 		let mut stack = SmallVec::new();
-		stack.push(self);
-		Traverse { stack }
+		stack.push(StrippedFragmentRef::Value(self));
+		TraverseStripped { stack }
 	}
 
 	/// Recursively count the number of values for which `f` returns `true`.
-	pub fn count(&self, mut f: impl FnMut(&Self) -> bool) -> usize {
-		self.traverse().filter(|v| f(*v)).count()
+	pub fn count(&self, mut f: impl FnMut(StrippedFragmentRef<M>) -> bool) -> usize {
+		self.traverse().filter(|i| f(*i)).count()
 	}
 
 	/// Returns the volume of the value.
@@ -337,9 +337,11 @@ impl<M> Value<M> {
 	/// The volume is the sum of all values and recursively nested values
 	/// included in `self`, including `self` (the volume is at least `1`).
 	///
-	/// This is equivalent to `value.traverse().count()` or `value.count(|_| true)`.
+	/// This is equivalent to `value.traverse().filter(StrippedFragmentRef::is_value).count()`.
 	pub fn volume(&self) -> usize {
-		self.traverse().count()
+		self.traverse()
+			.filter(StrippedFragmentRef::is_value)
+			.count()
 	}
 
 	/// Recursively maps the metadata inside the value.
@@ -380,15 +382,15 @@ impl<M> Value<M> {
 	}
 }
 
-pub trait TraverseWithMetadata<M> {
-	fn traverse_with_metadata(&self) -> MetaTraverse<M>;
+pub trait Traversal<M> {
+	fn traverse(&self) -> Traverse<M>;
 }
 
-impl<M> TraverseWithMetadata<M> for Meta<Value<M>, M> {
-	fn traverse_with_metadata(&self) -> MetaTraverse<M> {
+impl<M> Traversal<M> for Meta<Value<M>, M> {
+	fn traverse(&self) -> Traverse<M> {
 		let mut stack = SmallVec::new();
-		stack.push(self);
-		MetaTraverse { stack }
+		stack.push(FragmentRef::Value(self));
+		Traverse { stack }
 	}
 }
 
@@ -501,22 +503,174 @@ try_from_float! {
 	f64
 }
 
-pub struct Traverse<'a, M> {
-	stack: SmallVec<[&'a Value<M>; 8]>,
+pub enum StrippedFragmentRef<'a, M> {
+	Value(&'a Value<M>),
+	Key(&'a object::Key),
 }
 
-impl<'a, M> Iterator for Traverse<'a, M> {
-	type Item = &'a Value<M>;
+impl<'a, M> StrippedFragmentRef<'a, M> {
+	pub fn is_key(&self) -> bool {
+		matches!(self, Self::Key(_))
+	}
+
+	pub fn is_value(&self) -> bool {
+		matches!(self, Self::Value(_))
+	}
+
+	pub fn is_null(&self) -> bool {
+		matches!(self, Self::Value(Value::Null))
+	}
+
+	pub fn is_number(&self) -> bool {
+		matches!(self, Self::Value(Value::Number(_)))
+	}
+
+	pub fn is_string(&self) -> bool {
+		matches!(self, Self::Value(Value::String(_)))
+	}
+
+	pub fn is_array(&self) -> bool {
+		matches!(self, Self::Value(Value::Array(_)))
+	}
+
+	pub fn is_object(&self) -> bool {
+		matches!(self, Self::Value(Value::Object(_)))
+	}
+}
+
+impl<'a, M> Clone for StrippedFragmentRef<'a, M> {
+	fn clone(&self) -> Self {
+		match self {
+			Self::Value(v) => Self::Value(*v),
+			Self::Key(k) => Self::Key(k),
+		}
+	}
+}
+
+impl<'a, M> Copy for StrippedFragmentRef<'a, M> {}
+
+impl<'a, M> StrippedFragmentRef<'a, M> {
+	pub fn sub_fragments(&self) -> SubFragments<'a, M> {
+		match self {
+			Self::Value(Value::Array(a)) => SubFragments::Array(a.iter()),
+			Self::Value(Value::Object(o)) => SubFragments::Object(None, o.iter()),
+			_ => SubFragments::None,
+		}
+	}
+}
+
+pub enum FragmentRef<'a, M> {
+	Value(&'a Meta<Value<M>, M>),
+	Key(&'a Meta<object::Key, M>),
+}
+
+impl<'a, M> FragmentRef<'a, M> {
+	pub fn is_key(&self) -> bool {
+		matches!(self, Self::Key(_))
+	}
+
+	pub fn is_value(&self) -> bool {
+		matches!(self, Self::Value(_))
+	}
+
+	pub fn is_null(&self) -> bool {
+		matches!(self, Self::Value(Meta(Value::Null, _)))
+	}
+
+	pub fn is_number(&self) -> bool {
+		matches!(self, Self::Value(Meta(Value::Number(_), _)))
+	}
+
+	pub fn is_string(&self) -> bool {
+		matches!(self, Self::Value(Meta(Value::String(_), _)))
+	}
+
+	pub fn is_array(&self) -> bool {
+		matches!(self, Self::Value(Meta(Value::Array(_), _)))
+	}
+
+	pub fn is_object(&self) -> bool {
+		matches!(self, Self::Value(Meta(Value::Object(_), _)))
+	}
+
+	pub fn strip(self) -> StrippedFragmentRef<'a, M> {
+		match self {
+			Self::Value(v) => StrippedFragmentRef::Value(v.value()),
+			Self::Key(k) => StrippedFragmentRef::Key(k.value()),
+		}
+	}
+}
+
+impl<'a, M> locspan::Strip for FragmentRef<'a, M> {
+	type Stripped = StrippedFragmentRef<'a, M>;
+
+	fn strip(self) -> Self::Stripped {
+		self.strip()
+	}
+}
+
+impl<'a, M> Clone for FragmentRef<'a, M> {
+	fn clone(&self) -> Self {
+		match self {
+			Self::Value(v) => Self::Value(*v),
+			Self::Key(k) => Self::Key(*k),
+		}
+	}
+}
+
+impl<'a, M> Copy for FragmentRef<'a, M> {}
+
+impl<'a, M> FragmentRef<'a, M> {
+	pub fn sub_fragments(&self) -> SubFragments<'a, M> {
+		match self {
+			Self::Value(Meta(Value::Array(a), _)) => SubFragments::Array(a.iter()),
+			Self::Value(Meta(Value::Object(o), _)) => SubFragments::Object(None, o.iter()),
+			_ => SubFragments::None,
+		}
+	}
+}
+
+pub enum SubFragments<'a, M> {
+	None,
+	Array(core::slice::Iter<'a, Meta<Value<M>, M>>),
+	Object(
+		Option<&'a Meta<Value<M>, M>>,
+		core::slice::Iter<'a, object::Entry<M>>,
+	),
+}
+
+impl<'a, M> Iterator for SubFragments<'a, M> {
+	type Item = FragmentRef<'a, M>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match self {
+			Self::None => None,
+			Self::Array(a) => a.next().map(FragmentRef::Value),
+			Self::Object(back, e) => match back.take() {
+				Some(value) => Some(FragmentRef::Value(value)),
+				None => match e.next() {
+					Some(entry) => {
+						*back = Some(&entry.value);
+						Some(FragmentRef::Key(&entry.key))
+					}
+					None => None,
+				},
+			},
+		}
+	}
+}
+
+pub struct TraverseStripped<'a, M> {
+	stack: SmallVec<[StrippedFragmentRef<'a, M>; 8]>,
+}
+
+impl<'a, M> Iterator for TraverseStripped<'a, M> {
+	type Item = StrippedFragmentRef<'a, M>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.stack.pop() {
 			Some(v) => {
-				match v {
-					Value::Array(a) => self.stack.extend(a.iter().rev().map(Meta::value)),
-					Value::Object(o) => self.stack.extend(o.iter().rev().map(|e| e.value.value())),
-					_ => (),
-				}
-
+				self.stack.extend(v.sub_fragments().map(FragmentRef::strip));
 				Some(v)
 			}
 			None => None,
@@ -524,24 +678,17 @@ impl<'a, M> Iterator for Traverse<'a, M> {
 	}
 }
 
-pub struct MetaTraverse<'a, M> {
-	stack: SmallVec<[&'a Meta<Value<M>, M>; 8]>,
+pub struct Traverse<'a, M> {
+	stack: SmallVec<[FragmentRef<'a, M>; 8]>,
 }
 
-impl<'a, M> Iterator for MetaTraverse<'a, M> {
-	type Item = &'a Meta<Value<M>, M>;
+impl<'a, M> Iterator for Traverse<'a, M> {
+	type Item = FragmentRef<'a, M>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.stack.pop() {
 			Some(v) => {
-				match v {
-					Meta(Value::Array(a), _) => self.stack.extend(a.iter().rev()),
-					Meta(Value::Object(o), _) => {
-						self.stack.extend(o.iter().rev().map(|e| &e.value))
-					}
-					_ => (),
-				}
-
+				self.stack.extend(v.sub_fragments());
 				Some(v)
 			}
 			None => None,
