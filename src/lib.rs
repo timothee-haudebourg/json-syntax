@@ -382,12 +382,18 @@ impl<M> Value<M> {
 	}
 }
 
-pub trait Traversal<M> {
-	fn traverse(&self) -> Traverse<M>;
+pub trait Traversal<'a> {
+	type Fragment;
+	type Traverse: Iterator<Item = Self::Fragment>;
+
+	fn traverse(&'a self) -> Self::Traverse;
 }
 
-impl<M> Traversal<M> for Meta<Value<M>, M> {
-	fn traverse(&self) -> Traverse<M> {
+impl<'a, M: 'a> Traversal<'a> for Meta<Value<M>, M> {
+	type Fragment = FragmentRef<'a, M>;
+	type Traverse = Traverse<'a, M>;
+
+	fn traverse(&'a self) -> Self::Traverse {
 		let mut stack = SmallVec::new();
 		stack.push(FragmentRef::Value(self));
 		Traverse { stack }
