@@ -26,16 +26,10 @@
 //! ```
 //! use std::fs;
 //! use json_syntax::{Value, Parse, Print};
-//! use decoded_char::DecodedChars;
-//! use locspan::Meta;
-//!
-//! fn infallible<T>(t: T) -> Result<T, std::convert::Infallible> {
-//!   Ok(t)
-//! }
 //!
 //! let filename = "tests/inputs/y_structure_500_nested_arrays.json";
 //! let input = fs::read_to_string(filename).unwrap();
-//! let Meta(value, value_location) = Value::parse(filename, input.decoded_chars().map(infallible)).expect("parse error");
+//! let value = Value::parse_str(&input, |span| span).expect("parse error");
 //! println!("value: {}", value.pretty_print());
 //! ```
 pub use json_number::Number;
@@ -53,6 +47,12 @@ pub use print::Print;
 mod macros;
 
 pub use unordered::*;
+
+/// Value wrapped inside a [`locspan::Meta`] container.
+///
+/// This type alias is useful if the same metadata is used for the top level
+/// value and the sub value to avoid repetition of the `M` type.
+pub type MetaValue<M> = Meta<Value<M>, M>;
 
 /// String stack capacity.
 ///
@@ -103,21 +103,71 @@ impl fmt::Display for Kind {
 
 /// Value.
 ///
-/// The two types parameters are used to locate/map values inside the source
-/// file.
-/// The `S` parameter is the type used to identify the source file (generally
-/// a string slice, a path, or an index).
-/// The `P` parameter is the type used to locate the value *inside* the file.
-/// By default the `locspan::Span` type is used, since it is what the parser
-/// uses.
+/// The type parameter `M` is the type of metadata attached to each syntax node
+/// (values, sub values and object keys).
+/// The metadata is derived from the [`locspan::Span`] of the node in the source
+/// document using the metadata builder function passed to the parsing function
+/// (see the [`Parse`] trait for more details).
+///
+/// # Parsing
+///
+/// You can parse a `Value` by importing the [`Parse`] trait providing a
+/// collection of parsing functions.
+///
+/// ## Example
+///
+/// ```
+/// use json_syntax::{Value, Parse};
+/// use locspan::{Meta, Span};
+///
+/// let value: Meta<Value<Span>, Span> = Value::parse_str("{ \"key\": \"value\" }", |span| span).unwrap();
+/// ```
+///
+/// You don't need to specify the return type, here only shown to make it clear.
+/// Furthermore the `MetaValue<Span>` type alias can be used instead of
+/// `Meta<Value<Span>, Span>` to avoid repetition of the metadata type.
 ///
 /// # Comparison
 ///
 /// This type implements the usual comparison traits `PartialEq`, `Eq`,
 /// `PartialOrd` and `Ord`. However these implementations will also compare the
-/// code mapping information (source file and span).
-/// If you want to do comparisons while ignoring this information, you can use
-/// the [`locspan::Stripped`] type.
+/// metadata.
+/// If you want to do comparisons while ignoring ths metadata, you can use
+/// the [`locspan::Stripped`] type
+/// (combined with the [`locspan::BorrowStripped`] trait).
+///
+/// ## Example
+///
+/// ```
+/// use json_syntax::{Value, Parse};
+/// use locspan::BorrowStripped;
+///
+/// let a = Value::parse_str("null", |_| 0).unwrap();
+/// let b = Value::parse_str("null", |_| 1).unwrap();
+///
+/// assert_ne!(a, b); // not equals because the metadata is different.
+/// assert_eq!(a.stripped(), b.stripped()); // equals because the metadata is ignored.
+/// ```
+///
+/// # Printing
+///
+/// The [`Print`] trait provide a highly configurable printing method.
+///
+/// ## Example
+///
+/// ```
+/// use json_syntax::{Value, Parse, Print};
+///
+/// let value = Value::parse_str("[ 0, 1, { \"key\": \"value\" }, null ]", |span| span).unwrap();
+///
+/// println!("{}", value.pretty_print()); // multi line, indent with 2 spaces
+/// println!("{}", value.inline_print()); // single line, spaces
+/// println!("{}", value.compact_print()); // single line, no spaces
+///
+/// let mut options = json_syntax::print::Options::pretty();
+/// options.indent = json_syntax::print::Indent::Tabs(1);
+/// println!("{}", value.print_with(options)); // multi line, indent with tabs
+/// ```
 #[derive(
 	Clone,
 	PartialEq,

@@ -1,29 +1,30 @@
 use super::{Context, Error, Parse, Parser};
 use decoded_char::DecodedChar;
-use locspan::Loc;
+use locspan::{Meta, Span};
 
-impl<F: Clone> Parse<F> for () {
-	fn parse_in<E, C>(
-		parser: &mut Parser<F, E, C>,
+impl<M> Parse<M> for () {
+	fn parse_spanned<C, F, E>(
+		parser: &mut Parser<C, F, E>,
 		_context: Context,
-	) -> Result<Loc<Self, F>, Loc<Error<E, F>, F>>
+	) -> Result<Meta<Self, Span>, Meta<Error<E, M>, M>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
+		F: FnMut(Span) -> M,
 	{
 		match parser.next_char()? {
 			Some('n') => match parser.next_char()? {
 				Some('u') => match parser.next_char()? {
 					Some('l') => match parser.next_char()? {
-						Some('l') => Ok(Loc((), parser.position.current())),
+						Some('l') => Ok(Meta((), parser.position.current_span())),
 						unexpected => {
-							Err(Loc(Error::unexpected(unexpected), parser.position.last()))
+							Err(Meta(Error::unexpected(unexpected), parser.position.last()))
 						}
 					},
-					unexpected => Err(Loc(Error::unexpected(unexpected), parser.position.last())),
+					unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
 				},
-				unexpected => Err(Loc(Error::unexpected(unexpected), parser.position.last())),
+				unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
 			},
-			unexpected => Err(Loc(Error::unexpected(unexpected), parser.position.last())),
+			unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
 		}
 	}
 }

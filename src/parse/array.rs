@@ -1,6 +1,6 @@
 use super::{Context, Error, Parse, Parser};
 use decoded_char::DecodedChar;
-use locspan::Loc;
+use locspan::{Meta, Span};
 use locspan_derive::*;
 
 #[derive(
@@ -23,13 +23,14 @@ pub enum StartFragment {
 	NonEmpty,
 }
 
-impl<F: Clone> Parse<F> for StartFragment {
-	fn parse_in<E, C>(
-		parser: &mut Parser<F, E, C>,
+impl<M> Parse<M> for StartFragment {
+	fn parse_spanned<C, F, E>(
+		parser: &mut Parser<C, F, E>,
 		_context: Context,
-	) -> Result<Loc<Self, F>, Loc<Error<E, F>, F>>
+	) -> Result<Meta<Self, Span>, Meta<Error<E, M>, M>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
+		F: FnMut(Span) -> M,
 	{
 		match parser.next_char()? {
 			Some('[') => {
@@ -38,15 +39,18 @@ impl<F: Clone> Parse<F> for StartFragment {
 				match parser.peek_char()? {
 					Some(']') => {
 						parser.next_char()?;
-						Ok(Loc(StartFragment::Empty, parser.position.current()))
+						Ok(Meta(StartFragment::Empty, parser.position.current_span()))
 					}
 					_ => {
 						// wait for value.
-						Ok(Loc(StartFragment::NonEmpty, parser.position.current()))
+						Ok(Meta(
+							StartFragment::NonEmpty,
+							parser.position.current_span(),
+						))
 					}
 				}
 			}
-			unexpected => Err(Loc(Error::unexpected(unexpected), parser.position.last())),
+			unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
 		}
 	}
 }
@@ -71,18 +75,19 @@ pub enum ContinueFragment {
 	End,
 }
 
-impl<F: Clone> Parse<F> for ContinueFragment {
-	fn parse_in<E, C>(
-		parser: &mut Parser<F, E, C>,
+impl<M> Parse<M> for ContinueFragment {
+	fn parse_spanned<C, F, E>(
+		parser: &mut Parser<C, F, E>,
 		_context: Context,
-	) -> Result<Loc<Self, F>, Loc<Error<E, F>, F>>
+	) -> Result<Meta<Self, Span>, Meta<Error<E, M>, M>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
+		F: FnMut(Span) -> M,
 	{
 		match parser.next_char()? {
-			Some(',') => Ok(Loc(Self::Item, parser.position.current())),
-			Some(']') => Ok(Loc(Self::End, parser.position.current())),
-			unexpected => Err(Loc(Error::unexpected(unexpected), parser.position.last())),
+			Some(',') => Ok(Meta(Self::Item, parser.position.current_span())),
+			Some(']') => Ok(Meta(Self::End, parser.position.current_span())),
+			unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
 		}
 	}
 }

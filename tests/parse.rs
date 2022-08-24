@@ -1,12 +1,7 @@
-use decoded_char::DecodedChars;
 use json_syntax::{parse::Options, Parse, Value};
 use std::fmt::Debug;
 use std::fs;
 use std::path::Path;
-
-fn infallible<T>(t: T) -> Result<T, std::convert::Infallible> {
-	Ok(t)
-}
 
 fn test<P: Clone + AsRef<Path> + Debug>(filename: P, options: Options) {
 	let buffer = fs::read(filename.clone()).unwrap();
@@ -16,8 +11,7 @@ fn test<P: Clone + AsRef<Path> + Debug>(filename: P, options: Options) {
 		std::borrow::Cow::Borrowed(std::str::from_utf8(&buffer).unwrap())
 	};
 
-	Value::parse_with(filename, input.decoded_chars().map(infallible), options)
-		.expect("parse error");
+	Value::parse_str_with(&input, options, |span| span).expect("parse error");
 }
 
 #[test]

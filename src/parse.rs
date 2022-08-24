@@ -1,6 +1,6 @@
 use crate::Value;
 use decoded_char::DecodedChar;
-use locspan::{Loc, Location, Span};
+use locspan::{Meta, Span};
 use std::fmt;
 use std::iter::Peekable;
 
@@ -57,66 +57,182 @@ impl Default for Options {
 	}
 }
 
-pub trait Parse<F>: Sized {
-	fn parse<E, C>(file: F, chars: C) -> Result<Loc<Self, F>, Loc<Error<E, F>, F>>
+pub trait Parse<M>: Sized {
+	fn parse_str<F>(
+		content: &str,
+		metadata_builder: F,
+	) -> Result<Meta<Self, M>, Meta<Error<core::convert::Infallible, M>, M>>
 	where
-		C: Iterator<Item = Result<DecodedChar, E>>,
+		F: FnMut(Span) -> M,
 	{
-		let mut parser = Parser::new(file, chars);
-		Self::parse_in(&mut parser, Context::None)
+		Self::parse_utf8(content.chars().map(Ok), metadata_builder)
 	}
 
-	fn parse_with<E, C>(
-		file: F,
+	fn parse_str_with<F>(
+		content: &str,
+		options: Options,
+		metadata_builder: F,
+	) -> Result<Meta<Self, M>, Meta<Error<core::convert::Infallible, M>, M>>
+	where
+		F: FnMut(Span) -> M,
+	{
+		Self::parse_utf8_with(content.chars().map(Ok), options, metadata_builder)
+	}
+
+	fn parse_infallible_utf8<C, F>(
+		chars: C,
+		metadata_builder: F,
+	) -> Result<Meta<Self, M>, Meta<Error<core::convert::Infallible, M>, M>>
+	where
+		C: Iterator<Item = char>,
+		F: FnMut(Span) -> M,
+	{
+		Self::parse_infallible(chars.map(DecodedChar::from_utf8), metadata_builder)
+	}
+
+	fn parse_utf8_infallible_with<C, F>(
 		chars: C,
 		options: Options,
-	) -> Result<Loc<Self, F>, Loc<Error<E, F>, F>>
+		metadata_builder: F,
+	) -> Result<Meta<Self, M>, Meta<Error<core::convert::Infallible, M>, M>>
 	where
-		C: Iterator<Item = Result<DecodedChar, E>>,
+		C: Iterator<Item = char>,
+		F: FnMut(Span) -> M,
 	{
-		let mut parser = Parser::new_with(file, chars, options);
+		Self::parse_infallible_with(chars.map(DecodedChar::from_utf8), options, metadata_builder)
+	}
+
+	fn parse_utf8<C, F, E>(
+		chars: C,
+		metadata_builder: F,
+	) -> Result<Meta<Self, M>, Meta<Error<E, M>, M>>
+	where
+		C: Iterator<Item = Result<char, E>>,
+		F: FnMut(Span) -> M,
+	{
+		Self::parse(
+			chars.map(|c| c.map(DecodedChar::from_utf8)),
+			metadata_builder,
+		)
+	}
+
+	fn parse_utf8_with<C, F, E>(
+		chars: C,
+		options: Options,
+		metadata_builder: F,
+	) -> Result<Meta<Self, M>, Meta<Error<E, M>, M>>
+	where
+		C: Iterator<Item = Result<char, E>>,
+		F: FnMut(Span) -> M,
+	{
+		Self::parse_with(
+			chars.map(|c| c.map(DecodedChar::from_utf8)),
+			options,
+			metadata_builder,
+		)
+	}
+
+	fn parse_infallible<C, F>(
+		chars: C,
+		metadata_builder: F,
+	) -> Result<Meta<Self, M>, Meta<Error<core::convert::Infallible, M>, M>>
+	where
+		C: Iterator<Item = DecodedChar>,
+		F: FnMut(Span) -> M,
+	{
+		let mut parser = Parser::new(chars.map(Ok), metadata_builder);
 		Self::parse_in(&mut parser, Context::None)
 	}
 
-	fn parse_in<E, C>(
-		parser: &mut Parser<F, E, C>,
-		context: Context,
-	) -> Result<Loc<Self, F>, Loc<Error<E, F>, F>>
+	fn parse_infallible_with<C, F>(
+		chars: C,
+		options: Options,
+		metadata_builder: F,
+	) -> Result<Meta<Self, M>, Meta<Error<core::convert::Infallible, M>, M>>
 	where
-		C: Iterator<Item = Result<DecodedChar, E>>;
-}
+		C: Iterator<Item = DecodedChar>,
+		F: FnMut(Span) -> M,
+	{
+		let mut parser = Parser::new_with(chars.map(Ok), options, metadata_builder);
+		Self::parse_in(&mut parser, Context::None)
+	}
 
-pub trait ValueOrParse<F>: Parse<F> {
-	fn value_or_parse<E, C>(
-		value: Option<Loc<Value<Location<F>>, F>>,
-		parser: &mut Parser<F, E, C>,
-		context: Context,
-	) -> Result<Loc<Self, F>, Loc<Error<E, F>, F>>
-	where
-		C: Iterator<Item = Result<DecodedChar, E>>;
-}
-
-impl<F, T> ValueOrParse<F> for T
-where
-	T: Parse<F> + From<Value<Location<F>>>,
-{
-	fn value_or_parse<E, C>(
-		value: Option<Loc<Value<Location<F>>, F>>,
-		parser: &mut Parser<F, E, C>,
-		context: Context,
-	) -> Result<Loc<Self, F>, Loc<Error<E, F>, F>>
+	fn parse<C, F, E>(chars: C, metadata_builder: F) -> Result<Meta<Self, M>, Meta<Error<E, M>, M>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
+		F: FnMut(Span) -> M,
+	{
+		let mut parser = Parser::new(chars, metadata_builder);
+		Self::parse_in(&mut parser, Context::None)
+	}
+
+	fn parse_with<C, F, E>(
+		chars: C,
+		options: Options,
+		metadata_builder: F,
+	) -> Result<Meta<Self, M>, Meta<Error<E, M>, M>>
+	where
+		C: Iterator<Item = Result<DecodedChar, E>>,
+		F: FnMut(Span) -> M,
+	{
+		let mut parser = Parser::new_with(chars, options, metadata_builder);
+		Self::parse_in(&mut parser, Context::None)
+	}
+
+	fn parse_in<C, F, E>(
+		parser: &mut Parser<C, F, E>,
+		context: Context,
+	) -> Result<Meta<Self, M>, Meta<Error<E, M>, M>>
+	where
+		C: Iterator<Item = Result<DecodedChar, E>>,
+		F: FnMut(Span) -> M,
+	{
+		let Meta(value, span) = Self::parse_spanned(parser, context)?;
+		Ok(Meta(value, parser.position.metadata_at(span)))
+	}
+
+	fn parse_spanned<C, F, E>(
+		parser: &mut Parser<C, F, E>,
+		context: Context,
+	) -> Result<Meta<Self, Span>, Meta<Error<E, M>, M>>
+	where
+		C: Iterator<Item = Result<DecodedChar, E>>,
+		F: FnMut(Span) -> M;
+}
+
+pub trait ValueOrParse<M>: Parse<M> {
+	fn value_or_parse<C, F, E>(
+		value: Option<Meta<Value<M>, Span>>,
+		parser: &mut Parser<C, F, E>,
+		context: Context,
+	) -> Result<Meta<Self, Span>, Meta<Error<E, M>, M>>
+	where
+		C: Iterator<Item = Result<DecodedChar, E>>,
+		F: FnMut(Span) -> M;
+}
+
+impl<T, M> ValueOrParse<M> for T
+where
+	T: Parse<M> + From<Value<M>>,
+{
+	fn value_or_parse<C, F, E>(
+		value: Option<Meta<Value<M>, Span>>,
+		parser: &mut Parser<C, F, E>,
+		context: Context,
+	) -> Result<Meta<Self, Span>, Meta<Error<E, M>, M>>
+	where
+		C: Iterator<Item = Result<DecodedChar, E>>,
+		F: FnMut(Span) -> M,
 	{
 		match value {
 			Some(value) => Ok(value.cast()),
-			None => Self::parse_in(parser, context),
+			None => Self::parse_spanned(parser, context),
 		}
 	}
 }
 
 /// JSON parser.
-pub struct Parser<F, E, C: Iterator<Item = Result<DecodedChar, E>>> {
+pub struct Parser<C: Iterator<Item = Result<DecodedChar, E>>, F, E> {
 	/// Character stream.
 	chars: Peekable<C>,
 
@@ -133,27 +249,27 @@ pub fn is_whitespace(c: char) -> bool {
 	matches!(c, ' ' | '\t' | '\r' | '\n')
 }
 
-impl<F, E, C: Iterator<Item = Result<DecodedChar, E>>> Parser<F, E, C> {
-	pub fn new(file: F, chars: C) -> Self {
+impl<C: Iterator<Item = Result<DecodedChar, E>>, F, E, M> Parser<C, F, E>
+where
+	F: FnMut(Span) -> M,
+{
+	pub fn new(chars: C, metadata_builder: F) -> Self {
 		Self {
 			chars: chars.peekable(),
-			position: Position::new(file),
+			position: Position::new(metadata_builder),
 			options: Options::default(),
 		}
 	}
 
-	pub fn new_with(file: F, chars: C, options: Options) -> Self {
+	pub fn new_with(chars: C, options: Options, metadata_builder: F) -> Self {
 		Self {
 			chars: chars.peekable(),
-			position: Position::new(file),
+			position: Position::new(metadata_builder),
 			options,
 		}
 	}
 
-	fn peek_char(&mut self) -> Result<Option<char>, Loc<Error<E, F>, F>>
-	where
-		F: Clone,
-	{
+	fn peek_char(&mut self) -> Result<Option<char>, Meta<Error<E, M>, M>> {
 		match self.chars.peek() {
 			None => Ok(None),
 			Some(Ok(c)) => Ok(Some(c.chr())),
@@ -161,10 +277,7 @@ impl<F, E, C: Iterator<Item = Result<DecodedChar, E>>> Parser<F, E, C> {
 		}
 	}
 
-	fn next_char(&mut self) -> Result<Option<char>, Loc<Error<E, F>, F>>
-	where
-		F: Clone,
-	{
+	fn next_char(&mut self) -> Result<Option<char>, Meta<Error<E, M>, M>> {
 		match self.chars.next() {
 			None => Ok(None),
 			Some(Ok(c)) => {
@@ -173,14 +286,11 @@ impl<F, E, C: Iterator<Item = Result<DecodedChar, E>>> Parser<F, E, C> {
 				self.position.last_span.push(c.len());
 				Ok(Some(c.into_char()))
 			}
-			Some(Err(e)) => Err(Loc(Error::Stream(e), self.position.end())),
+			Some(Err(e)) => Err(Meta(Error::Stream(e), self.position.end())),
 		}
 	}
 
-	fn skip_whitespaces(&mut self) -> Result<(), Loc<Error<E, F>, F>>
-	where
-		F: Clone,
-	{
+	fn skip_whitespaces(&mut self) -> Result<(), Meta<Error<E, M>, M>> {
 		while let Some(c) = self.peek_char()? {
 			if is_whitespace(c) {
 				self.next_char()?;
@@ -193,16 +303,13 @@ impl<F, E, C: Iterator<Item = Result<DecodedChar, E>>> Parser<F, E, C> {
 		Ok(())
 	}
 
-	fn skip_trailing_whitespaces(&mut self, context: Context) -> Result<(), Loc<Error<E, F>, F>>
-	where
-		F: Clone,
-	{
+	fn skip_trailing_whitespaces(&mut self, context: Context) -> Result<(), Meta<Error<E, M>, M>> {
 		self.skip_whitespaces()?;
 
 		if let Some(c) = self.peek_char()? {
 			if !context.follows(c) {
 				// panic!("unexpected {:?} in {:?}", c, context);
-				return Err(Loc(Error::unexpected(Some(c)), self.position.last()));
+				return Err(Meta(Error::unexpected(Some(c)), self.position.last()));
 			}
 		}
 
@@ -212,7 +319,7 @@ impl<F, E, C: Iterator<Item = Result<DecodedChar, E>>> Parser<F, E, C> {
 
 /// Parse error.
 #[derive(Debug)]
-pub enum Error<E, F> {
+pub enum Error<E, M> {
 	/// Stream error.
 	Stream(E),
 
@@ -223,13 +330,13 @@ pub enum Error<E, F> {
 	InvalidUnicodeCodePoint(u32),
 
 	/// Missing low surrogate in a string.
-	MissingLowSurrogate(Loc<u16, F>),
+	MissingLowSurrogate(Meta<u16, M>),
 
 	/// Invalid low surrogate in a string.
-	InvalidLowSurrogate(Loc<u16, F>, u32),
+	InvalidLowSurrogate(Meta<u16, M>, u32),
 }
 
-impl<E, F> Error<E, F> {
+impl<E, M> Error<E, M> {
 	/// Creates an `Unexpected` error.
 	#[inline(always)]
 	fn unexpected(c: Option<char>) -> Self {
@@ -238,7 +345,7 @@ impl<E, F> Error<E, F> {
 	}
 }
 
-impl<E: fmt::Display, F> fmt::Display for Error<E, F> {
+impl<E: fmt::Display, M> fmt::Display for Error<E, M> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			Self::Stream(e) => e.fmt(f),
@@ -253,39 +360,40 @@ impl<E: fmt::Display, F> fmt::Display for Error<E, F> {
 
 /// Lexer position.
 struct Position<F> {
-	file: F,
 	span: Span,
 	last_span: Span,
+	metadata_builder: F,
 }
 
 impl<F> Position<F> {
-	fn new(file: F) -> Self {
+	fn new(metadata_builder: F) -> Self {
 		Self {
-			file,
 			span: Span::default(),
 			last_span: Span::default(),
+			metadata_builder,
 		}
 	}
 
-	fn current(&self) -> Location<F>
-	where
-		F: Clone,
-	{
-		Location::new(self.file.clone(), self.span)
+	fn current_span(&self) -> Span {
+		self.span
+	}
+}
+
+impl<F: FnMut(Span) -> M, M> Position<F> {
+	fn metadata_at(&mut self, span: Span) -> M {
+		(self.metadata_builder)(span)
 	}
 
-	fn end(&self) -> Location<F>
-	where
-		F: Clone,
-	{
-		Location::new(self.file.clone(), self.span.end().into())
+	fn current(&mut self) -> M {
+		(self.metadata_builder)(self.span)
 	}
 
-	fn last(&self) -> Location<F>
-	where
-		F: Clone,
-	{
-		Location::new(self.file.clone(), self.last_span)
+	fn end(&mut self) -> M {
+		(self.metadata_builder)(self.span.end().into())
+	}
+
+	fn last(&mut self) -> M {
+		(self.metadata_builder)(self.last_span)
 	}
 }
 

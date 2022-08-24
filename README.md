@@ -24,25 +24,21 @@ document.
 - Strings are stored on the stack whenever possible, thanks to the [`smallstr`](https://crates.io/crates/smallstr) crate.
 - The parser is configurable to accept documents that do not strictly
   adhere to the standard.
+- Highly configurable printing methods.
+- Macro to build any value statically.
 - Thoroughly tested.
 
 ## Usage
 
 ```rust
 use std::fs;
-use json_syntax::{Value, Parse};
-use decoded_char::DecodedChars;
-use locspan::Loc;
-
-fn infallible<T>(t: T) -> Result<T, std::convert::Infallible> {
-  Ok(t)
-}
+use json_syntax::{Value, Parse, Print};
+use locspan::Meta;
 
 let filename = "tests/inputs/y_structure_500_nested_arrays.json";
 let input = fs::read_to_string(filename).unwrap();
-let Loc(value, value_location) = Value::parse(filename, input.decoded_chars().map(infallible)).expect("parse error");
-
-// ...
+let Meta(value, value_span) = Value::parse_str(&input, |span| span).expect("parse error");
+println!("value: {}", value.pretty_print());
 ```
 
 ## License

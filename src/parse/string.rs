@@ -1,17 +1,18 @@
 use super::{Context, Error, Parse, Parser};
 use decoded_char::DecodedChar;
-use locspan::{Loc, Meta};
+use locspan::{Meta, Span};
 use smallstr::SmallString;
 
 fn is_control(c: char) -> bool {
 	('\u{0000}'..='\u{001f}').contains(&c)
 }
 
-fn parse_hex4<F: Clone, E, C>(
-	parser: &mut Parser<F, E, C>,
-) -> Result<Loc<u32, F>, Loc<Error<E, F>, F>>
+fn parse_hex4<C, F, E, M>(
+	parser: &mut Parser<C, F, E>,
+) -> Result<Meta<u32, Span>, Meta<Error<E, M>, M>>
 where
 	C: Iterator<Item = Result<DecodedChar, E>>,
+	F: FnMut(Span) -> M,
 {
 	match parser.next_char()? {
 		Some(c) => match c.to_digit(16) {
@@ -21,41 +22,43 @@ where
 						Some(c) => match c.to_digit(16) {
 							Some(h1) => match parser.next_char()? {
 								Some(c) => match c.to_digit(16) {
-									Some(h0) => Ok(Loc(
+									Some(h0) => Ok(Meta(
 										h3 << 12 | h2 << 8 | h1 << 4 | h0,
-										parser.position.current(),
+										parser.position.current_span(),
 									)),
-									None => {
-										Err(Loc(Error::unexpected(Some(c)), parser.position.last()))
-									}
+									None => Err(Meta(
+										Error::unexpected(Some(c)),
+										parser.position.last(),
+									)),
 								},
 								unexpected => {
-									Err(Loc(Error::unexpected(unexpected), parser.position.last()))
+									Err(Meta(Error::unexpected(unexpected), parser.position.last()))
 								}
 							},
-							None => Err(Loc(Error::unexpected(Some(c)), parser.position.last())),
+							None => Err(Meta(Error::unexpected(Some(c)), parser.position.last())),
 						},
 						unexpected => {
-							Err(Loc(Error::unexpected(unexpected), parser.position.last()))
+							Err(Meta(Error::unexpected(unexpected), parser.position.last()))
 						}
 					},
-					None => Err(Loc(Error::unexpected(Some(c)), parser.position.last())),
+					None => Err(Meta(Error::unexpected(Some(c)), parser.position.last())),
 				},
-				unexpected => Err(Loc(Error::unexpected(unexpected), parser.position.last())),
+				unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
 			},
-			None => Err(Loc(Error::unexpected(Some(c)), parser.position.last())),
+			None => Err(Meta(Error::unexpected(Some(c)), parser.position.last())),
 		},
-		unexpected => Err(Loc(Error::unexpected(unexpected), parser.position.last())),
+		unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
 	}
 }
 
-impl<F: Clone, A: smallvec::Array<Item = u8>> Parse<F> for SmallString<A> {
-	fn parse_in<E, C>(
-		parser: &mut Parser<F, E, C>,
+impl<M, A: smallvec::Array<Item = u8>> Parse<M> for SmallString<A> {
+	fn parse_spanned<C, F, E>(
+		parser: &mut Parser<C, F, E>,
 		_context: Context,
-	) -> Result<Loc<Self, F>, Loc<Error<E, F>, F>>
+	) -> Result<Meta<Self, Span>, Meta<Error<E, M>, M>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
+		F: FnMut(Span) -> M,
 	{
 		match parser.next_char()? {
 			Some('"') => {
@@ -63,25 +66,27 @@ impl<F: Clone, A: smallvec::Array<Item = u8>> Parse<F> for SmallString<A> {
 				let span = parser.position.span;
 				parser.position.span.clear();
 
-				let mut high_surrogate: Option<Loc<u32, F>> = None;
+				let mut high_surrogate: Option<Meta<u32, Span>> = None;
 
 				loop {
 					let c = match parser.next_char()? {
 						Some('"') => {
-							if let Some(Meta(high, loc)) = high_surrogate {
+							if let Some(Meta(high, span)) = high_surrogate {
 								if parser.options.accept_truncated_surrogate_pair {
 									result.push('\u{fffd}');
 								} else {
-									break Err(Loc(
-										Error::MissingLowSurrogate(Loc(high as u16, loc)),
+									break Err(Meta(
+										Error::MissingLowSurrogate(Meta(
+											high as u16,
+											parser.position.metadata_at(span),
+										)),
 										parser.position.current(),
 									));
 								}
 							}
 
-							let mut pos = parser.position.current();
-							pos.set_span(span.union(parser.position.span));
-							break Ok(Loc(result, pos));
+							parser.position.span = span.union(parser.position.span);
+							break Ok(Meta(result, parser.position.current_span()));
 						}
 						Some('\\') => match parser.next_char()? {
 							Some(c @ ('"' | '\\' | '/')) => c,
@@ -91,13 +96,13 @@ impl<F: Clone, A: smallvec::Array<Item = u8>> Parse<F> for SmallString<A> {
 							Some('f') => '\u{000c}',
 							Some('r') => '\u{000d}',
 							Some('u') => {
-								let Meta(codepoint, codepoint_loc) = parse_hex4(parser)?;
+								let Meta(codepoint, codepoint_span) = parse_hex4(parser)?;
 
 								match high_surrogate.take() {
-									Some(Meta(high, high_loc)) => {
+									Some(Meta(high, high_span)) => {
 										if (0xdc00..=0xdfff).contains(&codepoint) {
 											let low = codepoint;
-											let low_loc = codepoint_loc;
+											let low_span = codepoint_span;
 											let codepoint =
 												((high - 0xd800) << 10 | (low - 0xdc00)) + 0x010000;
 											match char::from_u32(codepoint) {
@@ -106,11 +111,13 @@ impl<F: Clone, A: smallvec::Array<Item = u8>> Parse<F> for SmallString<A> {
 													if parser.options.accept_invalid_codepoints {
 														'\u{fffd}'
 													} else {
-														break Err(Loc(
+														break Err(Meta(
 															Error::InvalidUnicodeCodePoint(
 																codepoint,
 															),
-															high_loc.with(low_loc.span()),
+															parser.position.metadata_at(
+																low_span.union(high_span),
+															),
 														));
 													}
 												}
@@ -124,28 +131,33 @@ impl<F: Clone, A: smallvec::Array<Item = u8>> Parse<F> for SmallString<A> {
 													if parser.options.accept_invalid_codepoints {
 														'\u{fffd}'
 													} else {
-														break Err(Loc(
+														break Err(Meta(
 															Error::InvalidUnicodeCodePoint(
 																codepoint,
 															),
-															codepoint_loc,
+															parser
+																.position
+																.metadata_at(codepoint_span),
 														));
 													}
 												}
 											}
 										} else {
-											break Err(Loc(
+											break Err(Meta(
 												Error::InvalidLowSurrogate(
-													Loc(high as u16, high_loc),
+													Meta(
+														high as u16,
+														parser.position.metadata_at(high_span),
+													),
 													codepoint,
 												),
-												codepoint_loc,
+												parser.position.metadata_at(codepoint_span),
 											));
 										}
 									}
 									None => {
 										if (0xd800..=0xdbff).contains(&codepoint) {
-											high_surrogate = Some(Loc(codepoint, codepoint_loc));
+											high_surrogate = Some(Meta(codepoint, codepoint_span));
 											continue;
 										} else {
 											match char::from_u32(codepoint) {
@@ -154,11 +166,13 @@ impl<F: Clone, A: smallvec::Array<Item = u8>> Parse<F> for SmallString<A> {
 													if parser.options.accept_invalid_codepoints {
 														'\u{fffd}'
 													} else {
-														break Err(Loc(
+														break Err(Meta(
 															Error::InvalidUnicodeCodePoint(
 																codepoint,
 															),
-															codepoint_loc,
+															parser
+																.position
+																.metadata_at(codepoint_span),
 														));
 													}
 												}
@@ -168,7 +182,7 @@ impl<F: Clone, A: smallvec::Array<Item = u8>> Parse<F> for SmallString<A> {
 								}
 							}
 							unexpected => {
-								break Err(Loc(
+								break Err(Meta(
 									Error::unexpected(unexpected),
 									parser.position.last(),
 								))
@@ -176,16 +190,19 @@ impl<F: Clone, A: smallvec::Array<Item = u8>> Parse<F> for SmallString<A> {
 						},
 						Some(c) if !is_control(c) => c,
 						unexpected => {
-							break Err(Loc(Error::unexpected(unexpected), parser.position.last()))
+							break Err(Meta(Error::unexpected(unexpected), parser.position.last()))
 						}
 					};
 
-					if let Some(Meta(high, loc)) = high_surrogate.take() {
+					if let Some(Meta(high, span)) = high_surrogate.take() {
 						if parser.options.accept_truncated_surrogate_pair {
 							result.push('\u{fffd}');
 						} else {
-							break Err(Loc(
-								Error::MissingLowSurrogate(Loc(high as u16, loc)),
+							break Err(Meta(
+								Error::MissingLowSurrogate(Meta(
+									high as u16,
+									parser.position.metadata_at(span),
+								)),
 								parser.position.current(),
 							));
 						}
@@ -195,7 +212,7 @@ impl<F: Clone, A: smallvec::Array<Item = u8>> Parse<F> for SmallString<A> {
 					parser.position.span.clear();
 				}
 			}
-			unexpected => Err(Loc(Error::unexpected(unexpected), parser.position.last())),
+			unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
 		}
 	}
 }
