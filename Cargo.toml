@@ -1,6 +1,6 @@
 [package]
 name = "json-syntax"
-version = "0.6.7"
+version = "0.7.0"
 edition = "2021"
 authors = ["Timothée Haudebourg <author@haudebourg.net>"]
 description = "Strict JSON parsing and mapping library"
@@ -12,7 +12,7 @@ license = "MIT/Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-json-number = { version = "0.3.1", features = [ "smallnumberbuf" ] }
+json-number = { version = "0.4.1", features = [ "smallnumberbuf" ] }
 smallvec = "1.9"
 smallstr = "0.3"
 locspan = "0.7.3"
