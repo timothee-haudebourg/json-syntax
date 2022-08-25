@@ -161,12 +161,13 @@ impl<S: Default> IndexMap<S> {
 	}
 }
 
-impl<S> IndexMap<S> {
-	pub fn new() -> Self
-	where
-		S: Default,
-	{
+impl<S: Default> IndexMap<S> {
+	pub fn new() -> Self {
 		Self::default()
+	}
+
+	pub fn with_capacity(cap: usize) -> Self {
+		Self { hash_builder: S::default(), table: RawTable::with_capacity(cap) }
 	}
 }
 

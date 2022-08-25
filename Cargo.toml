@@ -11,8 +11,13 @@ documentation = "https://docs.rs/json-syntax"
 license = "MIT/Apache-2.0"
 readme = "README.md"
 
+[features]
+default = ["serde_json"]
+serde_json = ["serde", "dep:serde_json"]
+serde = ["dep:serde", "smallstr/serde", "json-number/serde"]
+
 [dependencies]
-json-number = { version = "0.3.1", features = [ "smallnumberbuf" ] }
+json-number = { version = "0.4.1", features = [ "smallnumberbuf" ] }
 smallvec = "1.9"
 smallstr = "0.3"
 locspan = "0.7.3"
@@ -20,3 +25,5 @@ locspan-derive = "0.5.1"
 indexmap = "1.9.1"
 decoded-char = "0.1"
 hashbrown = { version = "0.12.1", features = [ "raw" ] }
+serde = { version = "1", optional = true }
+serde_json = { version = "1", optional = true }

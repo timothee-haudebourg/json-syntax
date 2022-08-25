@@ -94,6 +94,10 @@ impl<M> Object<M> {
 		Self::default()
 	}
 
+	pub fn with_capacity(cap: usize) -> Self {
+		Self { entries: Vec::with_capacity(cap), indexes: IndexMap::with_capacity(cap) }
+	}
+
 	pub fn from_vec(entries: Vec<Entry<M>>) -> Self {
 		let mut indexes = IndexMap::new();
 		for i in 0..entries.len() {
