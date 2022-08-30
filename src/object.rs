@@ -123,7 +123,7 @@ impl<M> Object<M> {
 		self.entries.iter()
 	}
 
-	/// Returns an iterator over the entries matching the given key.
+	/// Returns an iterator over the values matching the given key.
 	///
 	/// Runs in `O(1)` (average).
 	pub fn get<Q: ?Sized>(&self, key: &Q) -> Values<M>
@@ -138,6 +138,26 @@ impl<M> Object<M> {
 		Values {
 			indexes,
 			object: self,
+		}
+	}
+
+	/// Returns the unique entry value matching the given key.
+	///
+	/// Returns an error if multiple entries match the key.
+	///
+	/// Runs in `O(1)` (average).
+	pub fn get_unique<Q: ?Sized>(&self, key: &Q) -> Result<Option<&Value<M>>, Duplicate<&Entry<M>>>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let mut entries = self.get_entries(key);
+
+		match entries.next() {
+			Some(entry) => match entries.next() {
+				Some(duplicate) => Err(Duplicate(entry, duplicate)),
+				None => Ok(Some(&entry.value)),
+			},
+			None => Ok(None),
 		}
 	}
 
@@ -156,6 +176,29 @@ impl<M> Object<M> {
 		Entries {
 			indexes,
 			object: self,
+		}
+	}
+
+	/// Returns the unique entry matching the given key.
+	///
+	/// Returns an error if multiple entries match the key.
+	///
+	/// Runs in `O(1)` (average).
+	pub fn get_unique_entry<Q: ?Sized>(
+		&self,
+		key: &Q,
+	) -> Result<Option<&Entry<M>>, Duplicate<&Entry<M>>>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let mut entries = self.get_entries(key);
+
+		match entries.next() {
+			Some(entry) => match entries.next() {
+				Some(duplicate) => Err(Duplicate(entry, duplicate)),
+				None => Ok(Some(entry)),
+			},
+			None => Ok(None),
 		}
 	}
 
@@ -295,6 +338,29 @@ impl<M> Object<M> {
 		Q: Hash + Equivalent<Key>,
 	{
 		RemovedEntries { key, object: self }
+	}
+
+	/// Remove the unique entry associated to the given key.
+	///
+	/// Returns an error if multiple entries match the key.
+	///
+	/// Runs in `O(n)` time (average).
+	pub fn remove_unique<Q: ?Sized>(
+		&mut self,
+		key: &Q,
+	) -> Result<Option<Entry<M>>, Duplicate<Entry<M>>>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let mut entries = self.remove(key);
+
+		match entries.next() {
+			Some(entry) => match entries.next() {
+				Some(duplicate) => Err(Duplicate(entry, duplicate)),
+				None => Ok(Some(entry)),
+			},
+			None => Ok(None),
+		}
 	}
 
 	/// Recursively maps the metadata inside the object.
@@ -552,3 +618,6 @@ where
 		self.last();
 	}
 }
+
+#[derive(Debug)]
+pub struct Duplicate<T>(pub T, pub T);
