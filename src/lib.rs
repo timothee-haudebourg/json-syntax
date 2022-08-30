@@ -291,6 +291,12 @@ impl<M> Value<M> {
 		}
 	}
 
+	/// Alias for [`as_string`](Self::as_string).
+	#[inline]
+	pub fn as_str(&self) -> Option<&str> {
+		self.as_string()
+	}
+
 	#[inline]
 	pub fn as_string_mut(&mut self) -> Option<&mut String> {
 		match self {
