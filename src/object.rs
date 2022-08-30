@@ -1,4 +1,4 @@
-use crate::Value;
+use crate::{MetaValue, Value};
 use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{Hash, Hasher};
@@ -38,11 +38,11 @@ pub type Key = smallstr::SmallString<[u8; KEY_CAPACITY]>;
 pub struct Entry<M> {
 	#[stripped_deref]
 	pub key: Meta<Key, M>,
-	pub value: Meta<Value<M>, M>,
+	pub value: MetaValue<M>,
 }
 
 impl<M> Entry<M> {
-	pub fn new(key: Meta<Key, M>, value: Meta<Value<M>, M>) -> Self {
+	pub fn new(key: Meta<Key, M>, value: MetaValue<M>) -> Self {
 		Self { key, value }
 	}
 
@@ -50,7 +50,7 @@ impl<M> Entry<M> {
 		&self.key
 	}
 
-	pub fn as_value(&self) -> &Meta<Value<M>, M> {
+	pub fn as_value(&self) -> &MetaValue<M> {
 		&self.value
 	}
 
@@ -58,7 +58,7 @@ impl<M> Entry<M> {
 		self.key
 	}
 
-	pub fn into_value(self) -> Meta<Value<M>, M> {
+	pub fn into_value(self) -> MetaValue<M> {
 		self.value
 	}
 
@@ -111,7 +111,7 @@ impl<M> Entry<M> {
 		})
 	}
 
-	pub fn as_pair(&self) -> (&Meta<Key, M>, &Meta<Value<M>, M>) {
+	pub fn as_pair(&self) -> (&Meta<Key, M>, &MetaValue<M>) {
 		(&self.key, &self.value)
 	}
 }
@@ -194,7 +194,10 @@ impl<M> Object<M> {
 	/// Returns an error if multiple entries match the key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get_unique<Q: ?Sized>(&self, key: &Q) -> Result<Option<&Value<M>>, Duplicate<&Entry<M>>>
+	pub fn get_unique<Q: ?Sized>(
+		&self,
+		key: &Q,
+	) -> Result<Option<&MetaValue<M>>, Duplicate<&Entry<M>>>
 	where
 		Q: Hash + Equivalent<Key>,
 	{
@@ -330,7 +333,7 @@ impl<M> Object<M> {
 	/// are preserved, in order.
 	///
 	/// Runs in `O(1)`.
-	pub fn push(&mut self, key: Meta<Key, M>, value: Meta<Value<M>, M>) -> bool {
+	pub fn push(&mut self, key: Meta<Key, M>, value: MetaValue<M>) -> bool {
 		self.push_entry(Entry::new(key, value))
 	}
 
@@ -359,7 +362,7 @@ impl<M> Object<M> {
 	pub fn insert(
 		&mut self,
 		key: Meta<Key, M>,
-		value: Meta<Value<M>, M>,
+		value: MetaValue<M>,
 	) -> Option<RemovedByInsertion<M>> {
 		match self.index_of(key.value()) {
 			Some(index) => {
@@ -516,16 +519,16 @@ impl<M> FromIterator<Entry<M>> for Object<M> {
 	}
 }
 
-impl<M> Extend<(Meta<Key, M>, Meta<Value<M>, M>)> for Object<M> {
-	fn extend<I: IntoIterator<Item = (Meta<Key, M>, Meta<Value<M>, M>)>>(&mut self, iter: I) {
+impl<M> Extend<(Meta<Key, M>, MetaValue<M>)> for Object<M> {
+	fn extend<I: IntoIterator<Item = (Meta<Key, M>, MetaValue<M>)>>(&mut self, iter: I) {
 		for (key, value) in iter {
 			self.push(key, value);
 		}
 	}
 }
 
-impl<M> FromIterator<(Meta<Key, M>, Meta<Value<M>, M>)> for Object<M> {
-	fn from_iter<I: IntoIterator<Item = (Meta<Key, M>, Meta<Value<M>, M>)>>(iter: I) -> Self {
+impl<M> FromIterator<(Meta<Key, M>, MetaValue<M>)> for Object<M> {
+	fn from_iter<I: IntoIterator<Item = (Meta<Key, M>, MetaValue<M>)>>(iter: I) -> Self {
 		let mut object = Object::default();
 		object.extend(iter);
 		object
@@ -585,13 +588,13 @@ macro_rules! entries_iter {
 
 entries_iter! {
 	Values<'a> {
-		type Item = &'a Meta<Value<M>, M>;
+		type Item = &'a MetaValue<M>;
 
 		fn next(&mut self, index) { &self.object.entries[index].value }
 	}
 
 	ValuesWithIndex<'a> {
-		type Item = (usize, &'a Meta<Value<M>, M>);
+		type Item = (usize, &'a MetaValue<M>);
 
 		fn next(&mut self, index) { (index, &self.object.entries[index].value) }
 	}
