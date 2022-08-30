@@ -315,6 +315,18 @@ impl<M> Value<M> {
 		}
 	}
 
+	/// Return the given value as an array, even if it is not an array.
+	///
+	/// Returns the input value as is if it is already an array,
+	/// or puts it in a slice with a single element if it is not.
+	#[inline]
+	pub fn force_as_array(value: &Meta<Self, M>) -> Meta<&[Meta<Self, M>], &M> {
+		match value {
+			Meta(Self::Array(a), meta) => Meta(a, meta),
+			other @ Meta(_, meta) => Meta(core::slice::from_ref(other), meta),
+		}
+	}
+
 	#[inline]
 	pub fn as_object(&self) -> Option<&Object<M>> {
 		match self {
