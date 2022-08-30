@@ -189,6 +189,24 @@ impl<M> Object<M> {
 		}
 	}
 
+	/// Returns an iterator over the values matching the given key.
+	///
+	/// Runs in `O(1)` (average).
+	pub fn get_mut<Q: ?Sized>(&mut self, key: &Q) -> ValuesMut<M>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let indexes = self
+			.indexes
+			.get(&self.entries, key)
+			.map(IntoIterator::into_iter)
+			.unwrap_or_default();
+		ValuesMut {
+			indexes,
+			entries: &mut self.entries,
+		}
+	}
+
 	/// Returns the unique entry value matching the given key.
 	///
 	/// Returns an error if multiple entries match the key.
@@ -209,6 +227,36 @@ impl<M> Object<M> {
 				None => Ok(Some(&entry.value)),
 			},
 			None => Ok(None),
+		}
+	}
+
+	/// Returns the unique entry value matching the given key.
+	///
+	/// Returns an error if multiple entries match the key.
+	///
+	/// Runs in `O(1)` (average).
+	pub fn get_unique_mut<Q: ?Sized>(
+		&mut self,
+		key: &Q,
+	) -> Result<Option<&mut MetaValue<M>>, Duplicate<&Entry<M>>>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let index = {
+			let mut entries = self.get_entries_with_index(key);
+			match entries.next() {
+				Some((i, _)) => match entries.next() {
+					Some((j, _)) => Err(Duplicate(i, j)),
+					None => Ok(Some(i)),
+				},
+				None => Ok(None),
+			}
+		};
+
+		match index {
+			Ok(Some(i)) => Ok(Some(&mut self.entries[i].value)),
+			Ok(None) => Ok(None),
+			Err(Duplicate(i, j)) => Err(Duplicate(&self.entries[i], &self.entries[j])),
 		}
 	}
 
@@ -609,6 +657,49 @@ entries_iter! {
 		type Item = (usize, &'a Entry<M>);
 
 		fn next(&mut self, index) { (index, &self.object.entries[index]) }
+	}
+}
+
+macro_rules! entries_iter_mut {
+	($($id:ident <$lft:lifetime> {
+		type Item = $item:ty ;
+
+		fn next(&mut $self:ident, $index:ident) { $e:expr }
+	})*) => {
+		$(
+			pub struct $id<$lft, M> {
+				indexes: Indexes<$lft>,
+				entries: &$lft mut [Entry<M>]
+			}
+
+			impl<$lft, M> Iterator for $id<$lft, M> {
+				type Item = $item;
+
+				fn next(&mut $self) -> Option<Self::Item> {
+					$self.indexes.next().map(|$index| $e)
+				}
+			}
+		)*
+	};
+}
+
+entries_iter_mut! {
+	ValuesMut<'a> {
+		type Item = &'a mut MetaValue<M>;
+
+		fn next(&mut self, index) {
+			// This is safe because there is no aliasing between the values.
+			unsafe { core::mem::transmute(&mut self.entries[index].value) }
+		}
+	}
+
+	ValuesMutWithIndex<'a> {
+		type Item = (usize, &'a mut MetaValue<M>);
+
+		fn next(&mut self, index) {
+			// This is safe because there is no aliasing between the values.
+			unsafe { (index, core::mem::transmute(&mut self.entries[index].value)) }
+		}
 	}
 }
 
