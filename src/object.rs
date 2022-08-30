@@ -46,6 +46,54 @@ impl<M> Entry<M> {
 		Self { key, value }
 	}
 
+	pub fn as_key(&self) -> &Meta<Key, M> {
+		&self.key
+	}
+
+	pub fn as_value(&self) -> &Meta<Value<M>, M> {
+		&self.value
+	}
+
+	pub fn into_key(self) -> Meta<Key, M> {
+		self.key
+	}
+
+	pub fn into_value(self) -> Meta<Value<M>, M> {
+		self.value
+	}
+
+	pub fn stripped_key(&self) -> &Key {
+		&self.key
+	}
+
+	pub fn stripped_value(&self) -> &Value<M> {
+		&self.value
+	}
+
+	pub fn into_stripped_key(self) -> Key {
+		self.key.into_value()
+	}
+
+	pub fn into_stripped_value(self) -> Value<M> {
+		self.value.into_value()
+	}
+
+	pub fn key_metadata(&self) -> &M {
+		self.key.metadata()
+	}
+
+	pub fn value_metadata(&self) -> &M {
+		self.value.metadata()
+	}
+
+	pub fn into_key_metadata(self) -> M {
+		self.key.into_metadata()
+	}
+
+	pub fn into_value_metadata(self) -> M {
+		self.value.into_metadata()
+	}
+
 	pub fn map_metadata<N>(self, mut f: impl FnMut(M) -> N) -> Entry<N> {
 		Entry {
 			key: self.key.map_metadata(&mut f),
