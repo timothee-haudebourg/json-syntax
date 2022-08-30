@@ -58,10 +58,7 @@ impl Default for Options {
 }
 
 pub trait Parse<M>: Sized {
-	fn parse_str<F>(
-		content: &str,
-		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<core::convert::Infallible, M>, M>>
+	fn parse_str<F>(content: &str, metadata_builder: F) -> Result<Meta<Self, M>, Meta<Error<M>, M>>
 	where
 		F: FnMut(Span) -> M,
 	{
@@ -72,7 +69,7 @@ pub trait Parse<M>: Sized {
 		content: &str,
 		options: Options,
 		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<core::convert::Infallible, M>, M>>
+	) -> Result<Meta<Self, M>, Meta<Error<M>, M>>
 	where
 		F: FnMut(Span) -> M,
 	{
@@ -82,7 +79,7 @@ pub trait Parse<M>: Sized {
 	fn parse_infallible_utf8<C, F>(
 		chars: C,
 		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<core::convert::Infallible, M>, M>>
+	) -> Result<Meta<Self, M>, Meta<Error<M>, M>>
 	where
 		C: Iterator<Item = char>,
 		F: FnMut(Span) -> M,
@@ -94,7 +91,7 @@ pub trait Parse<M>: Sized {
 		chars: C,
 		options: Options,
 		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<core::convert::Infallible, M>, M>>
+	) -> Result<Meta<Self, M>, Meta<Error<M>, M>>
 	where
 		C: Iterator<Item = char>,
 		F: FnMut(Span) -> M,
@@ -105,7 +102,7 @@ pub trait Parse<M>: Sized {
 	fn parse_utf8<C, F, E>(
 		chars: C,
 		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<E, M>, M>>
+	) -> Result<Meta<Self, M>, Meta<Error<M, E>, M>>
 	where
 		C: Iterator<Item = Result<char, E>>,
 		F: FnMut(Span) -> M,
@@ -120,7 +117,7 @@ pub trait Parse<M>: Sized {
 		chars: C,
 		options: Options,
 		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<E, M>, M>>
+	) -> Result<Meta<Self, M>, Meta<Error<M, E>, M>>
 	where
 		C: Iterator<Item = Result<char, E>>,
 		F: FnMut(Span) -> M,
@@ -135,7 +132,7 @@ pub trait Parse<M>: Sized {
 	fn parse_infallible<C, F>(
 		chars: C,
 		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<core::convert::Infallible, M>, M>>
+	) -> Result<Meta<Self, M>, Meta<Error<M>, M>>
 	where
 		C: Iterator<Item = DecodedChar>,
 		F: FnMut(Span) -> M,
@@ -148,7 +145,7 @@ pub trait Parse<M>: Sized {
 		chars: C,
 		options: Options,
 		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<core::convert::Infallible, M>, M>>
+	) -> Result<Meta<Self, M>, Meta<Error<M>, M>>
 	where
 		C: Iterator<Item = DecodedChar>,
 		F: FnMut(Span) -> M,
@@ -157,7 +154,7 @@ pub trait Parse<M>: Sized {
 		Self::parse_in(&mut parser, Context::None)
 	}
 
-	fn parse<C, F, E>(chars: C, metadata_builder: F) -> Result<Meta<Self, M>, Meta<Error<E, M>, M>>
+	fn parse<C, F, E>(chars: C, metadata_builder: F) -> Result<Meta<Self, M>, Meta<Error<M, E>, M>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 		F: FnMut(Span) -> M,
@@ -170,7 +167,7 @@ pub trait Parse<M>: Sized {
 		chars: C,
 		options: Options,
 		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<E, M>, M>>
+	) -> Result<Meta<Self, M>, Meta<Error<M, E>, M>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 		F: FnMut(Span) -> M,
@@ -182,7 +179,7 @@ pub trait Parse<M>: Sized {
 	fn parse_in<C, F, E>(
 		parser: &mut Parser<C, F, E>,
 		context: Context,
-	) -> Result<Meta<Self, M>, Meta<Error<E, M>, M>>
+	) -> Result<Meta<Self, M>, Meta<Error<M, E>, M>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 		F: FnMut(Span) -> M,
@@ -194,7 +191,7 @@ pub trait Parse<M>: Sized {
 	fn parse_spanned<C, F, E>(
 		parser: &mut Parser<C, F, E>,
 		context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<E, M>, M>>
+	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 		F: FnMut(Span) -> M;
@@ -205,7 +202,7 @@ pub trait ValueOrParse<M>: Parse<M> {
 		value: Option<Meta<Value<M>, Span>>,
 		parser: &mut Parser<C, F, E>,
 		context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<E, M>, M>>
+	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 		F: FnMut(Span) -> M;
@@ -219,7 +216,7 @@ where
 		value: Option<Meta<Value<M>, Span>>,
 		parser: &mut Parser<C, F, E>,
 		context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<E, M>, M>>
+	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 		F: FnMut(Span) -> M,
@@ -249,7 +246,7 @@ pub fn is_whitespace(c: char) -> bool {
 	matches!(c, ' ' | '\t' | '\r' | '\n')
 }
 
-impl<C: Iterator<Item = Result<DecodedChar, E>>, F, E, M> Parser<C, F, E>
+impl<C: Iterator<Item = Result<DecodedChar, E>>, F, M, E> Parser<C, F, E>
 where
 	F: FnMut(Span) -> M,
 {
@@ -269,7 +266,7 @@ where
 		}
 	}
 
-	fn peek_char(&mut self) -> Result<Option<char>, Meta<Error<E, M>, M>> {
+	fn peek_char(&mut self) -> Result<Option<char>, Meta<Error<M, E>, M>> {
 		match self.chars.peek() {
 			None => Ok(None),
 			Some(Ok(c)) => Ok(Some(c.chr())),
@@ -277,7 +274,7 @@ where
 		}
 	}
 
-	fn next_char(&mut self) -> Result<Option<char>, Meta<Error<E, M>, M>> {
+	fn next_char(&mut self) -> Result<Option<char>, Meta<Error<M, E>, M>> {
 		match self.chars.next() {
 			None => Ok(None),
 			Some(Ok(c)) => {
@@ -290,7 +287,7 @@ where
 		}
 	}
 
-	fn skip_whitespaces(&mut self) -> Result<(), Meta<Error<E, M>, M>> {
+	fn skip_whitespaces(&mut self) -> Result<(), Meta<Error<M, E>, M>> {
 		while let Some(c) = self.peek_char()? {
 			if is_whitespace(c) {
 				self.next_char()?;
@@ -303,7 +300,7 @@ where
 		Ok(())
 	}
 
-	fn skip_trailing_whitespaces(&mut self, context: Context) -> Result<(), Meta<Error<E, M>, M>> {
+	fn skip_trailing_whitespaces(&mut self, context: Context) -> Result<(), Meta<Error<M, E>, M>> {
 		self.skip_whitespaces()?;
 
 		if let Some(c) = self.peek_char()? {
@@ -319,7 +316,7 @@ where
 
 /// Parse error.
 #[derive(Debug)]
-pub enum Error<E, M> {
+pub enum Error<M, E = core::convert::Infallible> {
 	/// Stream error.
 	Stream(E),
 
@@ -336,7 +333,7 @@ pub enum Error<E, M> {
 	InvalidLowSurrogate(Meta<u16, M>, u32),
 }
 
-impl<E, M> Error<E, M> {
+impl<M, E> Error<M, E> {
 	/// Creates an `Unexpected` error.
 	#[inline(always)]
 	fn unexpected(c: Option<char>) -> Self {
@@ -345,7 +342,7 @@ impl<E, M> Error<E, M> {
 	}
 }
 
-impl<E: fmt::Display, M> fmt::Display for Error<E, M> {
+impl<E: fmt::Display, M> fmt::Display for Error<M, E> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			Self::Stream(e) => e.fmt(f),
@@ -357,6 +354,8 @@ impl<E: fmt::Display, M> fmt::Display for Error<E, M> {
 		}
 	}
 }
+
+pub type MetaError<M, E = core::convert::Infallible> = Meta<Error<M, E>, M>;
 
 /// Lexer position.
 struct Position<F> {

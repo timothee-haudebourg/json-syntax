@@ -28,7 +28,7 @@ impl<M> Parse<M> for StartFragment<M> {
 	fn parse_spanned<C, F, E>(
 		parser: &mut Parser<C, F, E>,
 		_context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<E, M>, M>>
+	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 		F: FnMut(Span) -> M,
@@ -86,7 +86,7 @@ impl<M> Parse<M> for ContinueFragment<M> {
 	fn parse_spanned<C, F, E>(
 		parser: &mut Parser<C, F, E>,
 		_context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<E, M>, M>>
+	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 		F: FnMut(Span) -> M,

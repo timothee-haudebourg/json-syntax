@@ -9,7 +9,7 @@ fn is_control(c: char) -> bool {
 
 fn parse_hex4<C, F, E, M>(
 	parser: &mut Parser<C, F, E>,
-) -> Result<Meta<u32, Span>, Meta<Error<E, M>, M>>
+) -> Result<Meta<u32, Span>, Meta<Error<M, E>, M>>
 where
 	C: Iterator<Item = Result<DecodedChar, E>>,
 	F: FnMut(Span) -> M,
@@ -55,7 +55,7 @@ impl<M, A: smallvec::Array<Item = u8>> Parse<M> for SmallString<A> {
 	fn parse_spanned<C, F, E>(
 		parser: &mut Parser<C, F, E>,
 		_context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<E, M>, M>>
+	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 		F: FnMut(Span) -> M,
