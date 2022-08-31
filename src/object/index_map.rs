@@ -54,7 +54,7 @@ where
 	state.finish()
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Indexes {
 	/// Index of the first entry with the considered key (the representative).
 	rep: usize,
@@ -104,7 +104,7 @@ impl Indexes {
 			if self.other.is_empty() {
 				false
 			} else {
-				self.rep = self.other.remove(1);
+				self.rep = self.other.remove(0);
 				true
 			}
 		} else {
@@ -205,8 +205,12 @@ impl<S: BuildHasher> IndexMap<S> {
 	pub fn remove<M>(&mut self, entries: &[Entry<M>], index: usize) {
 		let key = entries[index].key.value();
 		let hash = make_insert_hash(&self.hash_builder, key);
-		if let Some(indexes) = self.table.get_mut(hash, equivalent_key(entries, key)) {
-			indexes.remove(index);
+		if let Some(bucket) = self.table.find(hash, equivalent_key(entries, key)) {
+			let indexes = unsafe { bucket.as_mut() };
+
+			if !indexes.remove(index) {
+				unsafe { self.table.remove(bucket) };
+			}
 		}
 	}
 
@@ -218,5 +222,80 @@ impl<S: BuildHasher> IndexMap<S> {
 				indexes.shift(index)
 			}
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::Value;
+	use locspan::Meta;
+
+	#[test]
+	fn insert() {
+		let entries = [
+			Entry::new(Meta("a".into(), ()), Meta(Value::Null, ())),
+			Entry::new(Meta("b".into(), ()), Meta(Value::Null, ())),
+			Entry::new(Meta("a".into(), ()), Meta(Value::Null, ())),
+		];
+
+		let mut indexes: IndexMap = IndexMap::default();
+		indexes.insert(&entries, 2);
+		indexes.insert(&entries, 1);
+		indexes.insert(&entries, 0);
+
+		let mut a = indexes.get(&entries, "a").unwrap().iter();
+		let mut b = indexes.get(&entries, "b").unwrap().iter();
+
+		assert_eq!(a.next(), Some(0));
+		assert_eq!(a.next(), Some(2));
+		assert_eq!(a.next(), None);
+		assert_eq!(b.next(), Some(1));
+		assert_eq!(b.next(), None);
+		assert_eq!(indexes.get(&entries, "c"), None)
+	}
+
+	#[test]
+	fn remove1() {
+		let entries = [
+			Entry::new(Meta("a".into(), ()), Meta(Value::Null, ())),
+			Entry::new(Meta("b".into(), ()), Meta(Value::Null, ())),
+			Entry::new(Meta("a".into(), ()), Meta(Value::Null, ())),
+		];
+
+		let mut indexes: IndexMap = IndexMap::default();
+		indexes.insert(&entries, 2);
+		indexes.insert(&entries, 1);
+		indexes.insert(&entries, 0);
+
+		indexes.remove(&entries, 1);
+		indexes.remove(&entries, 0);
+
+		let mut a = indexes.get(&entries, "a").unwrap().iter();
+
+		assert_eq!(a.next(), Some(2));
+		assert_eq!(a.next(), None);
+		assert_eq!(indexes.get(&entries, "b"), None)
+	}
+
+	#[test]
+	fn remove2() {
+		let entries = [
+			Entry::new(Meta("a".into(), ()), Meta(Value::Null, ())),
+			Entry::new(Meta("b".into(), ()), Meta(Value::Null, ())),
+			Entry::new(Meta("a".into(), ()), Meta(Value::Null, ())),
+		];
+
+		let mut indexes: IndexMap = IndexMap::default();
+		indexes.insert(&entries, 2);
+		indexes.insert(&entries, 1);
+		indexes.insert(&entries, 0);
+
+		indexes.remove(&entries, 0);
+		indexes.remove(&entries, 1);
+		indexes.remove(&entries, 2);
+
+		assert_eq!(indexes.get(&entries, "a"), None);
+		assert_eq!(indexes.get(&entries, "b"), None)
 	}
 }
