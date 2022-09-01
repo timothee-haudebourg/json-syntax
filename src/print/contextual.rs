@@ -96,3 +96,79 @@ impl<'c, T: PrecomputeSizeWithContext<C>, C> super::PrecomputeSize for Contextua
 		self.0.contextual_pre_compute_size(self.1, options, sizes)
 	}
 }
+
+impl<T: PrecomputeSizeWithContext<C>, M, C> PrecomputeSizeWithContext<C> for locspan::Meta<T, M> {
+	fn contextual_pre_compute_size(
+		&self,
+		context: &C,
+		options: &Options,
+		sizes: &mut Vec<Size>,
+	) -> Size {
+		self.0.contextual_pre_compute_size(context, options, sizes)
+	}
+}
+
+impl<T: PrintWithSizeAndContext<C>, M, C> PrintWithSizeAndContext<C> for locspan::Meta<T, M> {
+	fn contextual_fmt_with_size(
+		&self,
+		context: &C,
+		f: &mut std::fmt::Formatter,
+		options: &Options,
+		indent: usize,
+		sizes: &[Size],
+		index: &mut usize,
+	) -> std::fmt::Result {
+		self.0
+			.contextual_fmt_with_size(context, f, options, indent, sizes, index)
+	}
+}
+
+impl<T: PrintWithContext<C>, M, C> PrintWithContext<C> for locspan::Meta<T, M> {
+	fn contextual_fmt_with(
+		&self,
+		context: &C,
+		f: &mut std::fmt::Formatter,
+		options: &Options,
+		indent: usize,
+	) -> std::fmt::Result {
+		self.0.contextual_fmt_with(context, f, options, indent)
+	}
+}
+
+impl<T: PrecomputeSizeWithContext<C>, C> PrecomputeSizeWithContext<C> for locspan::Stripped<T> {
+	fn contextual_pre_compute_size(
+		&self,
+		context: &C,
+		options: &Options,
+		sizes: &mut Vec<Size>,
+	) -> Size {
+		self.0.contextual_pre_compute_size(context, options, sizes)
+	}
+}
+
+impl<T: PrintWithSizeAndContext<C>, C> PrintWithSizeAndContext<C> for locspan::Stripped<T> {
+	fn contextual_fmt_with_size(
+		&self,
+		context: &C,
+		f: &mut std::fmt::Formatter,
+		options: &Options,
+		indent: usize,
+		sizes: &[Size],
+		index: &mut usize,
+	) -> std::fmt::Result {
+		self.0
+			.contextual_fmt_with_size(context, f, options, indent, sizes, index)
+	}
+}
+
+impl<T: PrintWithContext<C>, C> PrintWithContext<C> for locspan::Stripped<T> {
+	fn contextual_fmt_with(
+		&self,
+		context: &C,
+		f: &mut std::fmt::Formatter,
+		options: &Options,
+		indent: usize,
+	) -> std::fmt::Result {
+		self.0.contextual_fmt_with(context, f, options, indent)
+	}
+}
