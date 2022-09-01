@@ -763,3 +763,17 @@ where
 
 #[derive(Debug)]
 pub struct Duplicate<T>(pub T, pub T);
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn remove() {
+		let mut object = Object::new();
+		object.insert(Meta("a".into(), ()), Meta(Value::Null, ()));
+
+		object.remove("a");
+		object.remove("a");
+	}
+}

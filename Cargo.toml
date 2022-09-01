@@ -1,6 +1,6 @@
 [package]
 name = "json-syntax"
-version = "0.8.6"
+version = "0.8.7"
 edition = "2021"
 authors = ["Timothée Haudebourg <author@haudebourg.net>"]
 description = "Strict JSON parsing and mapping library"
@@ -20,3 +20,4 @@ locspan-derive = "0.5.1"
 indexmap = "1.9.1"
 decoded-char = "0.1"
 hashbrown = { version = "0.12.1", features = [ "raw" ] }
+contextual = { version = "0.1", optional = true }
