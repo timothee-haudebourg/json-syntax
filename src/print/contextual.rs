@@ -14,7 +14,7 @@ pub trait PrintWithContext<C> {
 	) -> fmt::Result;
 }
 
-impl<'a, T: PrintWithContext<C>, C> PrintWithContext<C> for &'a T {
+impl<'a, T: PrintWithContext<C> + ?Sized, C> PrintWithContext<C> for &'a T {
 	fn contextual_fmt_with(
 		&self,
 		context: &C,
@@ -44,7 +44,7 @@ pub trait PrintWithSizeAndContext<C> {
 	) -> std::fmt::Result;
 }
 
-impl<'a, T: PrintWithSizeAndContext<C>, C> PrintWithSizeAndContext<C> for &'a T {
+impl<'a, T: PrintWithSizeAndContext<C> + ?Sized, C> PrintWithSizeAndContext<C> for &'a T {
 	fn contextual_fmt_with_size(
 		&self,
 		context: &C,
@@ -81,7 +81,7 @@ pub trait PrecomputeSizeWithContext<C> {
 	) -> Size;
 }
 
-impl<'a, T: PrecomputeSizeWithContext<C>, C> PrecomputeSizeWithContext<C> for &'a T {
+impl<'a, T: PrecomputeSizeWithContext<C> + ?Sized, C> PrecomputeSizeWithContext<C> for &'a T {
 	fn contextual_pre_compute_size(
 		&self,
 		context: &C,
