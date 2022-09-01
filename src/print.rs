@@ -3,6 +3,9 @@ use std::fmt;
 #[cfg(feature = "contextual")]
 mod contextual;
 
+#[cfg(feature = "contextual")]
+pub use self::contextual::*;
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum Indent {
 	Spaces(u8),
