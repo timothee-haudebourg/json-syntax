@@ -1,4 +1,5 @@
-use contextual::Contextual;
+use contextual::{Contextual, WithContext};
+use std::collections::HashSet;
 use std::fmt;
 
 use super::{Options, Size};
@@ -170,5 +171,69 @@ impl<T: PrintWithContext<C>, C> PrintWithContext<C> for locspan::Stripped<T> {
 		indent: usize,
 	) -> std::fmt::Result {
 		self.0.contextual_fmt_with(context, f, options, indent)
+	}
+}
+
+impl<T: PrecomputeSizeWithContext<C>, C> PrecomputeSizeWithContext<C> for [T] {
+	fn contextual_pre_compute_size(
+		&self,
+		context: &C,
+		options: &Options,
+		sizes: &mut Vec<Size>,
+	) -> Size {
+		super::pre_compute_array_size(self.iter().map(|i| i.with(context)), options, sizes)
+	}
+}
+
+impl<T: PrintWithSizeAndContext<C>, C> PrintWithSizeAndContext<C> for [T] {
+	fn contextual_fmt_with_size(
+		&self,
+		context: &C,
+		f: &mut std::fmt::Formatter,
+		options: &Options,
+		indent: usize,
+		sizes: &[Size],
+		index: &mut usize,
+	) -> std::fmt::Result {
+		super::print_array(
+			self.iter().map(|i| i.with(context)),
+			f,
+			options,
+			indent,
+			sizes,
+			index,
+		)
+	}
+}
+
+impl<T: PrecomputeSizeWithContext<C>, C> PrecomputeSizeWithContext<C> for HashSet<T> {
+	fn contextual_pre_compute_size(
+		&self,
+		context: &C,
+		options: &Options,
+		sizes: &mut Vec<Size>,
+	) -> Size {
+		super::pre_compute_array_size(self.iter().map(|i| i.with(context)), options, sizes)
+	}
+}
+
+impl<T: PrintWithSizeAndContext<C>, C> PrintWithSizeAndContext<C> for HashSet<T> {
+	fn contextual_fmt_with_size(
+		&self,
+		context: &C,
+		f: &mut std::fmt::Formatter,
+		options: &Options,
+		indent: usize,
+		sizes: &[Size],
+		index: &mut usize,
+	) -> std::fmt::Result {
+		super::print_array(
+			self.iter().map(|i| i.with(context)),
+			f,
+			options,
+			indent,
+			sizes,
+			index,
+		)
 	}
 }
