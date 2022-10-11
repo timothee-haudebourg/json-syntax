@@ -171,6 +171,10 @@ impl<M> Object<M> {
 		self.entries.iter()
 	}
 
+	pub fn iter_mut(&mut self) -> IterMut<M> {
+		IterMut(self.entries.iter_mut())
+	}
+
 	/// Returns an iterator over the values matching the given key.
 	///
 	/// Runs in `O(1)` (average).
@@ -490,6 +494,16 @@ impl<M> Object<M> {
 			entries,
 			indexes: self.indexes,
 		})
+	}
+}
+
+pub struct IterMut<'a, M>(std::slice::IterMut<'a, Entry<M>>);
+
+impl<'a, M> Iterator for IterMut<'a, M> {
+	type Item = (&'a Meta<Key, M>, &'a mut MetaValue<M>);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		self.0.next().map(|entry| (&entry.key, &mut entry.value))
 	}
 }
 
