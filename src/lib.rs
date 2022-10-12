@@ -251,6 +251,16 @@ impl<M> Value<M> {
 		matches!(self, Self::Object(_))
 	}
 
+	/// Checks if the value is either an empty array or an empty object.
+	#[inline]
+	pub fn is_empty_array_or_object(&self) -> bool {
+		match self {
+			Self::Array(a) => a.is_empty(),
+			Self::Object(o) => o.is_empty(),
+			_ => false,
+		}
+	}
+
 	#[inline]
 	pub fn as_boolean(&self) -> Option<bool> {
 		match self {
@@ -447,6 +457,14 @@ impl<M> Value<M> {
 			}
 			Self::Object(o) => Ok(Value::Object(o.try_map_metadata(f)?)),
 		}
+	}
+
+	/// Move and return the value, leaves `null` in its place.
+	#[inline(always)]
+	pub fn take(&mut self) -> Self {
+		let mut result = Self::Null;
+		std::mem::swap(&mut result, self);
+		result
 	}
 }
 
