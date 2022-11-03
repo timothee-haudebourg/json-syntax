@@ -18,10 +18,10 @@ use locspan_derive::*;
 	StrippedOrd,
 	StrippedHash,
 )]
-#[stripped_ignore(M)]
+#[locspan(ignore(M))]
 pub enum StartFragment<M> {
 	Empty,
-	NonEmpty(#[stripped_deref] Meta<Key, M>),
+	NonEmpty(#[locspan(deref_stripped)] Meta<Key, M>),
 }
 
 impl<M> Parse<M> for StartFragment<M> {
@@ -76,10 +76,10 @@ impl<M> Parse<M> for StartFragment<M> {
 	StrippedOrd,
 	StrippedHash,
 )]
-#[stripped_ignore(M)]
+#[locspan(ignore(M))]
 pub enum ContinueFragment<M> {
 	End,
-	Entry(#[stripped_deref] Meta<Key, M>),
+	Entry(#[locspan(deref_stripped)] Meta<Key, M>),
 }
 
 impl<M> Parse<M> for ContinueFragment<M> {

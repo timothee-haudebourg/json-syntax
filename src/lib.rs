@@ -182,19 +182,19 @@ impl fmt::Display for Kind {
 	StrippedOrd,
 	StrippedHash,
 )]
-#[stripped_ignore(M)]
+#[locspan(ignore(M))]
 pub enum Value<M> {
 	/// `null`.
 	Null,
 
 	/// Boolean `true` or `false`.
-	Boolean(#[stripped] bool),
+	Boolean(#[locspan(stripped)] bool),
 
 	/// Number.
-	Number(#[stripped] NumberBuf),
+	Number(#[locspan(stripped)] NumberBuf),
 
 	/// String.
-	String(#[stripped] String),
+	String(#[locspan(stripped)] String),
 
 	/// Array.
 	Array(Array<M>),

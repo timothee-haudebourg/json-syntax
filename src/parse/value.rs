@@ -19,11 +19,11 @@ use locspan_derive::*;
 	StrippedOrd,
 	StrippedHash,
 )]
-#[stripped_ignore(F)]
+#[locspan(ignore(F))]
 pub enum Fragment<M> {
 	Value(Value<M>),
 	BeginArray,
-	BeginObject(#[stripped_deref] Meta<Key, M>),
+	BeginObject(#[locspan(deref_stripped)] Meta<Key, M>),
 }
 
 impl<M> From<Value<M>> for Fragment<M> {
