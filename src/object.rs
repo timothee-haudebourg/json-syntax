@@ -495,6 +495,41 @@ impl<M> Object<M> {
 			indexes: self.indexes,
 		})
 	}
+
+	/// Sort the entries by key name.
+	///
+	/// Entries with the same key are sorted by value.
+	pub fn sort(&mut self) {
+		use locspan::BorrowStripped;
+		self.entries.sort_by(|a, b| a.stripped().cmp(b.stripped()));
+		self.indexes.clear();
+
+		for i in 0..self.entries.len() {
+			self.indexes.insert(&self.entries, i);
+		}
+	}
+
+	/// Puts this JSON object in canonical form according to
+	/// [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785#name-generation-of-canonical-jso).
+	///
+	/// This will canonicalize the entries and sort them by key.
+	/// Entries with the same key are sorted by value.
+	#[cfg(feature = "canonicalize")]
+	pub fn canonicalize_with(&mut self, buffer: &mut ryu_js::Buffer) {
+		for (_, item) in self.iter_mut() {
+			item.canonicalize_with(buffer);
+		}
+
+		self.sort()
+	}
+
+	/// Puts this JSON object in canonical form according to
+	/// [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785#name-generation-of-canonical-jso).
+	#[cfg(feature = "canonicalize")]
+	pub fn canonicalize(&mut self) {
+		let mut buffer = ryu_js::Buffer::new();
+		self.canonicalize_with(&mut buffer)
+	}
 }
 
 pub struct IterMut<'a, M>(std::slice::IterMut<'a, Entry<M>>);
@@ -553,6 +588,15 @@ impl<'a, M> IntoIterator for &'a Object<M> {
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.iter()
+	}
+}
+
+impl<'a, M> IntoIterator for &'a mut Object<M> {
+	type Item = (&'a Meta<Key, M>, &'a mut MetaValue<M>);
+	type IntoIter = IterMut<'a, M>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.iter_mut()
 	}
 }
 

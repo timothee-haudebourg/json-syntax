@@ -1,6 +1,6 @@
 [package]
 name = "json-syntax"
-version = "0.8.14"
+version = "0.8.15"
 edition = "2021"
 authors = ["Timothée Haudebourg <author@haudebourg.net>"]
 description = "Strict JSON parsing and mapping library"
@@ -11,8 +11,11 @@ documentation = "https://docs.rs/json-syntax"
 license = "MIT/Apache-2.0"
 readme = "README.md"
 
+[features]
+canonicalize = [ "ryu-js", "json-number/canonical" ]
+
 [dependencies]
-json-number = { version = "0.4.1", features = [ "smallnumberbuf" ] }
+json-number = { version = "0.4.2", features = [ "smallnumberbuf" ] }
 smallvec = "1.9"
 smallstr = "0.3"
 locspan = "0.7.3"
@@ -21,3 +24,4 @@ indexmap = "1.9.1"
 decoded-char = "0.1"
 hashbrown = { version = "0.12.1", features = [ "raw" ] }
 contextual = { version = "0.1.1", optional = true }
+ryu-js = { version = "0.2.2", optional = true }

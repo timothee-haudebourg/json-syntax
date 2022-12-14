@@ -366,6 +366,7 @@ impl Print for crate::NumberBuf {
 	}
 }
 
+/// Formats a string literal according to [RFC8785](https://www.rfc-editor.org/rfc/rfc8785#name-serialization-of-strings).
 pub fn string_literal(s: &str, f: &mut fmt::Formatter) -> fmt::Result {
 	use fmt::Display;
 	f.write_str("\"")?;
@@ -400,6 +401,7 @@ pub fn string_literal(s: &str, f: &mut fmt::Formatter) -> fmt::Result {
 	f.write_str("\"")
 }
 
+/// Returns the byte length of string literal according to [RFC8785](https://www.rfc-editor.org/rfc/rfc8785#name-serialization-of-strings).
 pub fn printed_string_size(s: &str) -> usize {
 	let mut width = 2;
 

@@ -19,6 +19,8 @@
 //!   adhere to the standard.
 //! - Highly configurable printing methods.
 //! - Macro to build any value statically.
+//! - JSON Canonicalization Scheme implementation ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785))
+//!   enabled with the `canonicalization` feature.
 //! - Thoroughly tested.
 //!
 //! # Usage
@@ -29,7 +31,7 @@
 //!
 //! let filename = "tests/inputs/y_structure_500_nested_arrays.json";
 //! let input = fs::read_to_string(filename).unwrap();
-//! let value = Value::parse_str(&input, |span| span).expect("parse error");
+//! let mut value = Value::parse_str(&input, |span| span).expect("parse error");
 //! println!("value: {}", value.pretty_print());
 //! ```
 pub use json_number::Number;
@@ -466,6 +468,34 @@ impl<M> Value<M> {
 		std::mem::swap(&mut result, self);
 		result
 	}
+
+	/// Puts this JSON value in canonical form according to
+	/// [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785).
+	///
+	/// The given `buffer` is used to canonicalize the number values.
+	#[cfg(feature = "canonicalize")]
+	pub fn canonicalize_with(&mut self, buffer: &mut ryu_js::Buffer) {
+		match self {
+			Self::Number(n) => {
+				*n = unsafe { NumberBuf::new_unchecked(n.canonical_with(buffer).as_bytes().into()) }
+			}
+			Self::Array(a) => {
+				for item in a {
+					item.canonicalize_with(buffer)
+				}
+			}
+			Self::Object(o) => o.canonicalize_with(buffer),
+			_ => (),
+		}
+	}
+
+	/// Puts this JSON value in canonical form according to
+	/// [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785).
+	#[cfg(feature = "canonicalize")]
+	pub fn canonicalize(&mut self) {
+		let mut buffer = ryu_js::Buffer::new();
+		self.canonicalize_with(&mut buffer)
+	}
 }
 
 pub trait Traversal<'a> {
@@ -796,5 +826,30 @@ impl<'a, M> Iterator for Traverse<'a, M> {
 			}
 			None => None,
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	#[cfg(feature = "canonicalize")]
+	fn canonicalize_01() {
+		let mut value: Meta<Value<()>, ()> = json!({
+			"b": 0.00000000001,
+			"c": {
+				"foo": true,
+				"bar": false
+			},
+			"a": [ "foo", "bar" ]
+		});
+
+		value.canonicalize();
+
+		assert_eq!(
+			value.compact_print().to_string(),
+			"{\"a\":[\"foo\",\"bar\"],\"b\":1e-11,\"c\":{\"bar\":false,\"foo\":true}}"
+		)
 	}
 }

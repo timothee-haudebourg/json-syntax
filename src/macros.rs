@@ -272,42 +272,42 @@ macro_rules! json {
 	// Missing value for last entry. Trigger a reasonable error message.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (:) $copy:tt) => {
 		// "unexpected end of macro invocation"
-		json!();
+		json!()
 	};
 
 	// Missing colon and value for last entry. Trigger a reasonable error
 	// message.
 	(@object [$($elems:expr,)*] ($($key:tt)+) () $copy:tt) => {
 		// "unexpected end of macro invocation"
-		json!();
+		json!()
 	};
 
 	// Misplaced colon. Trigger a reasonable error message.
 	(@object [$($elems:expr,)*] () (: $($rest:tt)*) ($colon:tt $($copy:tt)*)) => {
 		// Takes no arguments so "no rules expected the token `:`".
-		json_unexpected!($colon);
+		json_unexpected!($colon)
 	};
 
 	// Found a comma inside a key. Trigger a reasonable error message.
 	(@object [$($elems:expr,)*] ($($key:tt)*) (, $($rest:tt)*) ($comma:tt $($copy:tt)*)) => {
 		// Takes no arguments so "no rules expected the token `,`".
-		json_unexpected!($comma);
+		json_unexpected!($comma)
 	};
 
 	// Key is fully parenthesized. This avoids clippy double_parens false
 	// positives because the parenthesization may be necessary here.
 	(@object [$($elems:expr,)*] () (($key:expr) : $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)*] ($key) (: $($rest)*) (: $($rest)*));
+		json!(@object [$($elems,)*] ($key) (: $($rest)*) (: $($rest)*))
 	};
 
 	// Refuse to absorb colon token into key expression.
 	(@object [$($elems:expr,)*] ($($key:tt)*) (: $($unexpected:tt)+) $copy:tt) => {
-		json_expect_expr_comma!($($unexpected)+);
+		json_expect_expr_comma!($($unexpected)+)
 	};
 
 	// Munch a token into the current key.
 	(@object [$($elems:expr,)*] ($($key:tt)*) ($tt:tt $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)*] ($($key)* $tt) ($($rest)*) ($($rest)*));
+		json!(@object [$($elems,)*] ($($key)* $tt) ($($rest)*) ($($rest)*))
 	};
 
 	//////////////////////////////////////////////////////////////////////////

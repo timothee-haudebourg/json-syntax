@@ -223,6 +223,10 @@ impl<S: BuildHasher> IndexMap<S> {
 			}
 		}
 	}
+
+	pub fn clear(&mut self) {
+		self.table.clear()
+	}
 }
 
 #[cfg(test)]
