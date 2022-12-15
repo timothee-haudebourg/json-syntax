@@ -476,9 +476,7 @@ impl<M> Value<M> {
 	#[cfg(feature = "canonicalize")]
 	pub fn canonicalize_with(&mut self, buffer: &mut ryu_js::Buffer) {
 		match self {
-			Self::Number(n) => {
-				*n = unsafe { NumberBuf::new_unchecked(n.canonical_with(buffer).as_bytes().into()) }
-			}
+			Self::Number(n) => *n = NumberBuf::from_number(n.canonical_with(buffer)),
 			Self::Array(a) => {
 				for item in a {
 					item.canonicalize_with(buffer)
