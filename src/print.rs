@@ -389,16 +389,38 @@ pub fn string_literal(s: &str, f: &mut fmt::Formatter) -> fmt::Result {
 				let b = (codepoint & 0x0f00) >> 8;
 				let a = (codepoint & 0xf000) >> 12;
 
-				char::from_u32(b'0' as u32 + a).unwrap().fmt(f)?;
-				char::from_u32(b'0' as u32 + b).unwrap().fmt(f)?;
-				char::from_u32(b'0' as u32 + c).unwrap().fmt(f)?;
-				char::from_u32(b'0' as u32 + d).unwrap().fmt(f)?
+				digit(a).fmt(f)?;
+				digit(b).fmt(f)?;
+				digit(c).fmt(f)?;
+				digit(d).fmt(f)?
 			}
 			_ => c.fmt(f)?,
 		}
 	}
 
 	f.write_str("\"")
+}
+
+fn digit(c: u32) -> char {
+	match c {
+		0x0 => '0',
+		0x1 => '1',
+		0x2 => '2',
+		0x3 => '3',
+		0x4 => '4',
+		0x5 => '5',
+		0x6 => '6',
+		0x7 => '7',
+		0x8 => '8',
+		0x9 => '9',
+		0xa => 'a',
+		0xb => 'b',
+		0xc => 'c',
+		0xd => 'd',
+		0xe => 'e',
+		0xf => 'f',
+		_ => panic!("invalid input: {}", c),
+	}
 }
 
 /// Returns the byte length of string literal according to [RFC8785](https://www.rfc-editor.org/rfc/rfc8785#name-serialization-of-strings).

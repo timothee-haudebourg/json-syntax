@@ -828,11 +828,11 @@ impl<'a, M> Iterator for Traverse<'a, M> {
 }
 
 #[cfg(test)]
+#[cfg(feature = "canonicalize")]
 mod tests {
 	use super::*;
 
 	#[test]
-	#[cfg(feature = "canonicalize")]
 	fn canonicalize_01() {
 		let mut value: Meta<Value<()>, ()> = json!({
 			"b": 0.00000000001,
@@ -848,6 +848,26 @@ mod tests {
 		assert_eq!(
 			value.compact_print().to_string(),
 			"{\"a\":[\"foo\",\"bar\"],\"b\":1e-11,\"c\":{\"bar\":false,\"foo\":true}}"
+		)
+	}
+
+	#[test]
+	fn canonicalize_02() {
+		let mut value = Value::parse_str(
+			"{
+			\"numbers\": [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001],
+			\"string\": \"\\u20ac$\\u000F\\u000aA'\\u0042\\u0022\\u005c\\\\\\\"\\/\",
+			\"literals\": [null, true, false]
+		}",
+			|span| span,
+		)
+		.unwrap();
+
+		value.canonicalize();
+
+		assert_eq!(
+			value.compact_print().to_string(),
+			"{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}"
 		)
 	}
 }
