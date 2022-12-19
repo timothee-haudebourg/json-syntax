@@ -355,6 +355,15 @@ impl<E: fmt::Display, M> fmt::Display for Error<M, E> {
 	}
 }
 
+impl<E: 'static + std::error::Error, M: std::fmt::Debug> std::error::Error for Error<M, E> {
+	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+		match self {
+			Self::Stream(e) => Some(e),
+			_ => None,
+		}
+	}
+}
+
 pub type MetaError<M, E = core::convert::Infallible> = Meta<Error<M, E>, M>;
 
 /// Lexer position.
