@@ -13,9 +13,10 @@ readme = "README.md"
 
 [features]
 canonicalize = [ "ryu-js", "json-number/canonical" ]
+serde = [ "dep:serde", "json-number/serde" ]
 
 [dependencies]
-json-number = { version = "0.4.3", features = [ "smallnumberbuf" ] }
+json-number = { version = "0.4.4", features = [ "smallnumberbuf" ] }
 smallvec = "1.9"
 smallstr = "0.3"
 locspan = "0.7.3"
@@ -25,3 +26,7 @@ decoded-char = "0.1"
 hashbrown = { version = "0.12.1", features = [ "raw" ] }
 contextual = { version = "0.1.1", optional = true }
 ryu-js = { version = "0.2.2", optional = true }
+serde = { version = "1.0", optional = true }
+
+[dev-dependencies]
+serde = { version = "*", features = [ "derive" ] }

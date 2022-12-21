@@ -21,6 +21,7 @@
 //! - Macro to build any value statically.
 //! - JSON Canonicalization Scheme implementation ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785))
 //!   enabled with the `canonicalization` feature.
+//! - `serde` support (by enabling the `serde` feature).
 //! - Thoroughly tested.
 //!
 //! # Usage
@@ -48,6 +49,12 @@ pub mod print;
 pub use print::Print;
 mod macros;
 
+#[cfg(feature = "serde")]
+mod serde;
+
+#[cfg(feature = "serde")]
+pub use self::serde::*;
+
 pub use unordered::*;
 
 /// Value wrapped inside a [`locspan::Meta`] container.
@@ -66,7 +73,7 @@ pub const SMALL_STRING_CAPACITY: usize = 16;
 pub type String = smallstr::SmallString<[u8; SMALL_STRING_CAPACITY]>;
 
 /// Array.
-pub type Array<M> = Vec<Meta<Value<M>, M>>;
+pub type Array<M = ()> = Vec<Meta<Value<M>, M>>;
 
 pub use object::Object;
 
@@ -185,7 +192,7 @@ impl fmt::Display for Kind {
 	StrippedHash,
 )]
 #[locspan(ignore(M))]
-pub enum Value<M> {
+pub enum Value<M = ()> {
 	/// `null`.
 	Null,
 

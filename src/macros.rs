@@ -3,7 +3,7 @@
 /// ```
 /// # use json_syntax::{Value, json};
 /// # use locspan::Meta;
-/// let value: Meta<Value<()>, ()> = json!({
+/// let value: Meta<Value, ()> = json!({
 ///     "code": 200,
 ///     "success": true,
 ///     "payload": {
@@ -23,7 +23,7 @@
 /// let code = 200;
 /// let features = vec!["json", "syntax"];
 ///
-/// let value: Meta<Value<()>, ()> = json!({
+/// let value: Meta<Value, ()> = json!({
 ///     "code": Meta(Value::from(code), ()),
 ///     "success": Meta(Value::from(code == 200), ()),
 ///     "payload": {
@@ -51,15 +51,15 @@
 /// # use json_syntax::{Value, json};
 /// # use locspan::Meta;
 /// let value: Meta<Value<u8>, u8> = json!({
-///     "code": 200 @ 0,
-///     "success": true @ 1,
-///     "payload": {
-///         "features": [
-///             "json" @ 2,
-///             "syntax" @ 3
-///         ]
-///     }
-/// });
+///     ("code" @ 0): 200 @ 1,
+///     ("success" @ 2): true @ 3,
+///     ("payload" @ 4): {
+///         ("features" @ 5): [
+///             "json" @ 6,
+///             "syntax" @ 7
+///         ] @ 8
+///     } @ 9
+/// } @ 10);
 /// ```
 #[macro_export(local_inner_macros)]
 macro_rules! json {
@@ -186,7 +186,7 @@ macro_rules! json {
 
 	// Create an entry literal key.
 	(@key ($key:literal)) => {
-		::locspan::Meta($key.into(), ::core::default::Default::default())
+		::locspan::Meta($key.into(), ())
 	};
 
 	// Create an entry key.
@@ -321,7 +321,7 @@ macro_rules! json {
 	};
 
 	(null) => {
-		json!(null @ ::core::default::Default::default())
+		json!(null @ ())
 	};
 
 	(true @ $meta:expr) => {
@@ -329,7 +329,7 @@ macro_rules! json {
 	};
 
 	(true) => {
-		json!(true @ ::core::default::Default::default())
+		json!(true @ ())
 	};
 
 	(false @ $meta:expr) => {
@@ -337,7 +337,7 @@ macro_rules! json {
 	};
 
 	(false) => {
-		json!(false @ ::core::default::Default::default())
+		json!(false @ ())
 	};
 
 	($lit:literal @ $meta:expr) => {
@@ -345,7 +345,7 @@ macro_rules! json {
 	};
 
 	($lit:literal) => {
-		json!($lit @ ::core::default::Default::default())
+		json!($lit @ ())
 	};
 
 	([] @ $meta:expr) => {
@@ -353,7 +353,7 @@ macro_rules! json {
 	};
 
 	([]) => {
-		json!([] @ ::core::default::Default::default())
+		json!([] @ ())
 	};
 
 	([ $($tt:tt)+ ] @ $meta:expr) => {
@@ -361,7 +361,7 @@ macro_rules! json {
 	};
 
 	([ $($tt:tt)+ ]) => {
-		json!([ $($tt)+ ] @ ::core::default::Default::default())
+		json!([ $($tt)+ ] @ ())
 	};
 
 	({} @ $meta:expr) => {
@@ -369,7 +369,7 @@ macro_rules! json {
 	};
 
 	({}) => {
-		json!({} @ ::core::default::Default::default())
+		json!({} @ ())
 	};
 
 	({ $($tt:tt)+ } @ $meta:expr) => {
@@ -377,7 +377,7 @@ macro_rules! json {
 	};
 
 	({ $($tt:tt)+ }) => {
-		json!({ $($tt)+ } @ ::core::default::Default::default())
+		json!({ $($tt)+ } @ ())
 	};
 
 	($other:expr) => {

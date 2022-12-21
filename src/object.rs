@@ -35,7 +35,7 @@ pub type Key = smallstr::SmallString<[u8; KEY_CAPACITY]>;
 	StrippedHash,
 )]
 #[locspan(ignore(M))]
-pub struct Entry<M> {
+pub struct Entry<M = ()> {
 	#[locspan(deref_stripped)]
 	pub key: Meta<Key, M>,
 	pub value: MetaValue<M>,
@@ -119,7 +119,7 @@ impl<M> Entry<M> {
 /// Object.
 #[derive(Clone, StrippedPartialEq, StrippedEq, StrippedPartialOrd, StrippedOrd, StrippedHash)]
 #[locspan(ignore(M))]
-pub struct Object<M> {
+pub struct Object<M = ()> {
 	/// The entries of the object, in order.
 	entries: Vec<Entry<M>>,
 

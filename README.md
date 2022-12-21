@@ -26,6 +26,9 @@ document.
   adhere to the standard.
 - Highly configurable printing methods.
 - Macro to build any value statically.
+- JSON Canonicalization Scheme implementation ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785))
+  enabled with the `canonicalization` feature.
+- `serde` support (by enabling the `serde` feature).
 - Thoroughly tested.
 
 ## Usage
@@ -33,11 +36,10 @@ document.
 ```rust
 use std::fs;
 use json_syntax::{Value, Parse, Print};
-use locspan::Meta;
 
 let filename = "tests/inputs/y_structure_500_nested_arrays.json";
 let input = fs::read_to_string(filename).unwrap();
-let Meta(value, value_span) = Value::parse_str(&input, |span| span).expect("parse error");
+let mut value = Value::parse_str(&input, |span| span).expect("parse error");
 println!("value: {}", value.pretty_print());
 ```
 
