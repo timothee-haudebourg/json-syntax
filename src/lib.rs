@@ -22,6 +22,7 @@
 //! - JSON Canonicalization Scheme implementation ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785))
 //!   enabled with the `canonicalization` feature.
 //! - `serde` support (by enabling the `serde` feature).
+//! - Conversion from/to `serde_json::Value` (by enabling the `serde_json` feature).
 //! - Thoroughly tested.
 //!
 //! # Usage
@@ -47,6 +48,7 @@ mod unordered;
 pub use parse::Parse;
 pub mod print;
 pub use print::Print;
+mod convert;
 mod macros;
 
 #[cfg(feature = "serde")]
@@ -55,6 +57,7 @@ mod serde;
 #[cfg(feature = "serde")]
 pub use self::serde::*;
 
+pub use convert::*;
 pub use unordered::*;
 
 /// Value wrapped inside a [`locspan::Meta`] container.
