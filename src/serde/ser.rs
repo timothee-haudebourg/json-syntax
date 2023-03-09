@@ -5,6 +5,47 @@ use std::fmt;
 
 use crate::{object::Key, Array, NumberBuf, Object, Value};
 
+impl<M> Serialize for Value<M> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		match self {
+			Self::Null => serializer.serialize_unit(),
+			Self::Boolean(b) => serializer.serialize_bool(*b),
+			Self::Number(n) => n.serialize(serializer),
+			Self::String(s) => serializer.serialize_str(s),
+			Self::Array(a) => {
+				use serde::ser::SerializeSeq;
+				let mut seq = serializer.serialize_seq(Some(a.len()))?;
+
+				for item in a {
+					seq.serialize_element(item.value())?
+				}
+
+				seq.end()
+			}
+			Self::Object(o) => o.serialize(serializer),
+		}
+	}
+}
+
+impl<M> Serialize for Object<M> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		use serde::ser::SerializeMap;
+		let mut map = serializer.serialize_map(Some(self.len()))?;
+
+		for entry in self {
+			map.serialize_entry(entry.key.as_str(), entry.stripped_value())?;
+		}
+
+		map.end()
+	}
+}
+
 #[derive(Debug, Clone)]
 pub enum SerializeError {
 	Custom(String),

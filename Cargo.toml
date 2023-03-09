@@ -1,6 +1,6 @@
 [package]
 name = "json-syntax"
-version = "0.9.0"
+version = "0.9.1"
 edition = "2021"
 authors = ["Timothée Haudebourg <author@haudebourg.net>"]
 description = "Strict JSON parsing and mapping library"
@@ -12,7 +12,6 @@ license = "MIT/Apache-2.0"
 readme = "README.md"
 
 [features]
-default = [ "serde_json" ]
 canonicalize = [ "ryu-js", "json-number/canonical" ]
 serde = [ "dep:serde", "json-number/serde" ]
 serde_json = [ "dep:serde_json", "json-number/serde_json" ]
