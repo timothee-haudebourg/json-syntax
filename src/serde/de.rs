@@ -42,7 +42,7 @@ impl<M> Value<M> {
 	}
 }
 
-impl<'de> IntoDeserializer<'de, DeserializeError> for Value {
+impl<'de, M> IntoDeserializer<'de, DeserializeErrorFragment<M>> for Value<M> {
 	type Deserializer = Self;
 
 	fn into_deserializer(self) -> Self::Deserializer {
@@ -56,9 +56,42 @@ pub enum DeserializeError {
 	NonStringKey,
 }
 
-impl From<json_number::serde::Unexpected> for DeserializeError {
+pub enum DeserializeErrorFragment<M> {
+	Outer(DeserializeError),
+	Inner(Meta<DeserializeError, M>),
+}
+
+impl<M> DeserializeErrorFragment<M> {
+	pub fn strip(self) -> DeserializeError {
+		match self {
+			Self::Outer(e) => e,
+			Self::Inner(Meta(e, _)) => e,
+		}
+	}
+
+	pub fn with_metadata(self, meta: M) -> Meta<DeserializeError, M> {
+		match self {
+			Self::Outer(e) => Meta(e, meta),
+			Self::Inner(e) => e,
+		}
+	}
+}
+
+impl<M> From<DeserializeError> for DeserializeErrorFragment<M> {
+	fn from(value: DeserializeError) -> Self {
+		Self::Outer(value)
+	}
+}
+
+impl<M> From<Meta<DeserializeError, M>> for DeserializeErrorFragment<M> {
+	fn from(value: Meta<DeserializeError, M>) -> Self {
+		Self::Inner(value)
+	}
+}
+
+impl<M> From<json_number::serde::Unexpected> for DeserializeErrorFragment<M> {
 	fn from(u: json_number::serde::Unexpected) -> Self {
-		Self::Custom(u.to_string())
+		DeserializeError::Custom(u.to_string()).into()
 	}
 }
 
@@ -71,7 +104,36 @@ impl fmt::Display for DeserializeError {
 	}
 }
 
+impl<M> fmt::Debug for DeserializeErrorFragment<M> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Outer(e) => e.fmt(f),
+			Self::Inner(Meta(e, _)) => e.fmt(f),
+		}
+	}
+}
+
+impl<M> fmt::Display for DeserializeErrorFragment<M> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Outer(e) => e.fmt(f),
+			Self::Inner(Meta(e, _)) => e.fmt(f),
+		}
+	}
+}
+
+impl<M> std::error::Error for DeserializeErrorFragment<M> {}
+
 impl std::error::Error for DeserializeError {}
+
+impl<M> serde::de::Error for DeserializeErrorFragment<M> {
+	fn custom<T>(msg: T) -> Self
+	where
+		T: fmt::Display,
+	{
+		DeserializeError::Custom(msg.to_string()).into()
+	}
+}
 
 impl serde::de::Error for DeserializeError {
 	fn custom<T>(msg: T) -> Self
@@ -97,7 +159,7 @@ macro_rules! deserialize_number {
 }
 
 impl<'de, M> serde::Deserializer<'de> for Value<M> {
-	type Error = DeserializeError;
+	type Error = DeserializeErrorFragment<M>;
 
 	#[inline]
 	fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -340,7 +402,7 @@ impl<'de, M> serde::Deserializer<'de> for Value<M> {
 	}
 }
 
-fn visit_array<'de, M, V>(a: Array<M>, visitor: V) -> Result<V::Value, DeserializeError>
+fn visit_array<'de, M, V>(a: Array<M>, visitor: V) -> Result<V::Value, DeserializeErrorFragment<M>>
 where
 	V: serde::de::Visitor<'de>,
 {
@@ -358,7 +420,10 @@ where
 	}
 }
 
-fn visit_object<'de, M, V>(o: Object<M>, visitor: V) -> Result<V::Value, DeserializeError>
+fn visit_object<'de, M, V>(
+	o: Object<M>,
+	visitor: V,
+) -> Result<V::Value, DeserializeErrorFragment<M>>
 where
 	V: serde::de::Visitor<'de>,
 {
@@ -389,14 +454,17 @@ impl<M> ArrayDeserializer<M> {
 }
 
 impl<'de, M> SeqAccess<'de> for ArrayDeserializer<M> {
-	type Error = DeserializeError;
+	type Error = DeserializeErrorFragment<M>;
 
 	fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>
 	where
 		T: DeserializeSeed<'de>,
 	{
 		match self.iter.next() {
-			Some(Meta(value, _)) => seed.deserialize(value).map(Some),
+			Some(Meta(value, meta)) => seed
+				.deserialize(value)
+				.map_err(|e| e.with_metadata(meta).into())
+				.map(Some),
 			None => Ok(None),
 		}
 	}
@@ -411,7 +479,7 @@ impl<'de, M> SeqAccess<'de> for ArrayDeserializer<M> {
 
 struct ObjectDeserializer<M> {
 	iter: std::vec::IntoIter<Entry<M>>,
-	value: Option<Value<M>>,
+	value: Option<Meta<Value<M>, M>>,
 }
 
 impl<M> ObjectDeserializer<M> {
@@ -424,19 +492,22 @@ impl<M> ObjectDeserializer<M> {
 }
 
 impl<'de, M> MapAccess<'de> for ObjectDeserializer<M> {
-	type Error = DeserializeError;
+	type Error = DeserializeErrorFragment<M>;
 
 	fn next_key_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>
 	where
 		T: DeserializeSeed<'de>,
 	{
 		match self.iter.next() {
-			Some(Entry { key, value }) => {
-				self.value = Some(value.into_value());
-				let key_de = MapKeyDeserializer {
-					key: key.into_value(),
-				};
-				seed.deserialize(key_de).map(Some)
+			Some(Entry {
+				key: Meta(key, key_meta),
+				value,
+			}) => {
+				self.value = Some(value);
+				let key_de = MapKeyDeserializer { key };
+				seed.deserialize(key_de)
+					.map_err(|e| DeserializeErrorFragment::Inner(Meta(e, key_meta)))
+					.map(Some)
 			}
 			None => Ok(None),
 		}
@@ -447,7 +518,9 @@ impl<'de, M> MapAccess<'de> for ObjectDeserializer<M> {
 		T: DeserializeSeed<'de>,
 	{
 		match self.value.take() {
-			Some(value) => seed.deserialize(value),
+			Some(Meta(value, meta)) => seed
+				.deserialize(value)
+				.map_err(|e| e.with_metadata(meta).into()),
 			None => Err(serde::de::Error::custom("value is missing")),
 		}
 	}
@@ -546,7 +619,7 @@ struct EnumDeserializer<M> {
 }
 
 impl<'de, M> EnumAccess<'de> for EnumDeserializer<M> {
-	type Error = DeserializeError;
+	type Error = DeserializeErrorFragment<M>;
 	type Variant = VariantDeserializer<M>;
 
 	fn variant_seed<V>(self, seed: V) -> Result<(V::Value, VariantDeserializer<M>), Self::Error>
@@ -564,7 +637,7 @@ struct VariantDeserializer<M> {
 }
 
 impl<'de, M> VariantAccess<'de> for VariantDeserializer<M> {
-	type Error = DeserializeError;
+	type Error = DeserializeErrorFragment<M>;
 
 	fn unit_variant(self) -> Result<(), Self::Error> {
 		match self.value {

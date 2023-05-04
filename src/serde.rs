@@ -1,4 +1,4 @@
-use crate::Value;
+use crate::{MetaValue, Value};
 use locspan::Meta;
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -80,5 +80,38 @@ pub fn from_value<T, M>(value: Value<M>) -> Result<T, DeserializeError>
 where
 	T: DeserializeOwned,
 {
-	T::deserialize(value)
+	T::deserialize(value).map_err(DeserializeErrorFragment::strip)
+}
+
+/// Deserializes the JSON `value` into an instance of type `T`.
+/// Contrarily to [`from_value`], on error this function will return the
+/// metadata associated to the error location.
+///
+/// # Example
+///
+/// ```
+/// use serde::Deserialize;
+/// use json_syntax::{json, Value};
+///
+/// #[derive(Deserialize, Debug)]
+/// struct User {
+///     fingerprint: String,
+///     location: String,
+/// }
+///
+/// let j: Value = json!({
+///   "fingerprint": "0xF9BA143B95FF6D82",
+///   "location": "Menlo Park, CA"
+/// }).into_value();
+///
+/// let u: User = json_syntax::from_value(j).unwrap();
+/// println!("{:#?}", u);
+/// ```
+pub fn from_meta_value<T, M>(
+	Meta(value, meta): MetaValue<M>,
+) -> Result<T, Meta<DeserializeError, M>>
+where
+	T: DeserializeOwned,
+{
+	T::deserialize(value).map_err(|e| e.with_metadata(meta))
 }
