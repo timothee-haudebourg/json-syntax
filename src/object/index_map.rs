@@ -71,8 +71,16 @@ impl Indexes {
 		}
 	}
 
+	pub fn len(&self) -> usize {
+		1 + self.other.len()
+	}
+
 	pub fn first(&self) -> usize {
 		self.rep
+	}
+
+	pub fn is_redundant(&self) -> bool {
+		!self.other.is_empty()
 	}
 
 	pub fn redundant(&self) -> Option<usize> {
@@ -167,6 +175,18 @@ impl<S> IndexMap<S> {
 		S: Default,
 	{
 		Self::default()
+	}
+
+	pub fn contains_duplicate_keys(&self) -> bool {
+		unsafe {
+			for bucket in self.table.iter() {
+				if bucket.as_ref().is_redundant() {
+					return true;
+				}
+			}
+		}
+
+		false
 	}
 }
 

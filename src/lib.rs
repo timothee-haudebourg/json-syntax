@@ -78,6 +78,14 @@ pub type String = smallstr::SmallString<[u8; SMALL_STRING_CAPACITY]>;
 /// Array.
 pub type Array<M = ()> = Vec<Meta<Value<M>, M>>;
 
+impl<M: PartialEq> UnorderedPartialEq for Array<M> {
+	fn unordered_eq(&self, other: &Self) -> bool {
+		self.len() == other.len() && self.iter().zip(other).all(|(a, b)| a.unordered_eq(b))
+	}
+}
+
+impl<M: Eq> UnorderedEq for Array<M> {}
+
 pub use object::Object;
 
 /// Number buffer stack capacity.
@@ -505,6 +513,22 @@ impl<M> Value<M> {
 		self.canonicalize_with(&mut buffer)
 	}
 }
+
+impl<M: PartialEq> UnorderedPartialEq for Value<M> {
+	fn unordered_eq(&self, other: &Self) -> bool {
+		match (self, other) {
+			(Self::Null, Self::Null) => true,
+			(Self::Boolean(a), Self::Boolean(b)) => a == b,
+			(Self::Number(a), Self::Number(b)) => a == b,
+			(Self::String(a), Self::String(b)) => a == b,
+			(Self::Array(a), Self::Array(b)) => a.unordered_eq(b),
+			(Self::Object(a), Self::Object(b)) => a.unordered_eq(b),
+			_ => false,
+		}
+	}
+}
+
+impl<M: Eq> UnorderedEq for Value<M> {}
 
 pub trait Traversal<'a> {
 	type Fragment;

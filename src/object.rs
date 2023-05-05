@@ -1,4 +1,4 @@
-use crate::{MetaValue, Value};
+use crate::{MetaValue, UnorderedEq, UnorderedPartialEq, Value};
 use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{Hash, Hasher};
@@ -550,6 +550,44 @@ impl<M: PartialEq> PartialEq for Object<M> {
 
 impl<M: Eq> Eq for Object<M> {}
 
+impl<M: PartialEq> UnorderedPartialEq for Object<M> {
+	fn unordered_eq(&self, other: &Self) -> bool {
+		if self.entries.len() != other.entries.len() {
+			return false;
+		}
+
+		if !self.iter().all(|Entry { key, value: a }| {
+			other.get_entries(key.value()).any(
+				|Entry {
+				     key: other_key,
+				     value: b,
+				 }| key.metadata() == other_key.metadata() && a.unordered_eq(b),
+			)
+		}) {
+			return false;
+		}
+
+		if self.indexes.contains_duplicate_keys()
+			&& !other.iter().all(
+				|Entry {
+				     key: other_key,
+				     value: b,
+				 }| {
+					self.get_entries(other_key.value())
+						.any(|Entry { key, value: a }| {
+							key.metadata() == other_key.metadata() && a.unordered_eq(b)
+						})
+				},
+			) {
+			return false;
+		}
+
+		true
+	}
+}
+
+impl<M: Eq> UnorderedEq for Object<M> {}
+
 impl<M: PartialOrd> PartialOrd for Object<M> {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 		self.entries.partial_cmp(&other.entries)
@@ -824,6 +862,8 @@ pub struct Duplicate<T>(pub T, pub T);
 
 #[cfg(test)]
 mod tests {
+	use crate::BorrowUnordered;
+
 	use super::*;
 
 	#[test]
@@ -833,5 +873,61 @@ mod tests {
 
 		object.remove("a");
 		object.remove("a");
+	}
+
+	#[test]
+	fn unordered_eq1() {
+		let mut a = Object::new();
+		a.push(Meta("a".into(), ()), Meta(Value::Null, ()));
+		a.push(Meta("b".into(), ()), Meta(Value::Null, ()));
+
+		let mut b = Object::new();
+		b.push(Meta("b".into(), ()), Meta(Value::Null, ()));
+		b.push(Meta("a".into(), ()), Meta(Value::Null, ()));
+
+		assert_ne!(a, b);
+		assert_eq!(a.unordered(), b.unordered())
+	}
+
+	#[test]
+	fn unordered_eq2() {
+		let mut a = Object::new();
+		a.push(Meta("a".into(), ()), Meta(Value::Null, ()));
+		a.push(Meta("a".into(), ()), Meta(Value::Null, ()));
+
+		let mut b = Object::new();
+		b.push(Meta("a".into(), ()), Meta(Value::Null, ()));
+		b.push(Meta("a".into(), ()), Meta(Value::Null, ()));
+
+		assert_eq!(a, b);
+		assert_eq!(a.unordered(), b.unordered())
+	}
+
+	#[test]
+	fn unordered_eq3() {
+		let mut a = Object::new();
+		a.push(Meta("a".into(), 0), Meta(Value::Null, 0));
+		a.push(Meta("a".into(), 1), Meta(Value::Null, 0));
+
+		let mut b = Object::new();
+		b.push(Meta("a".into(), 1), Meta(Value::Null, 0));
+		b.push(Meta("a".into(), 0), Meta(Value::Null, 0));
+
+		assert_ne!(a, b);
+		assert_eq!(a.unordered(), b.unordered())
+	}
+
+	#[test]
+	fn unordered_eq4() {
+		let mut a = Object::new();
+		a.push(Meta("a".into(), 0), Meta(Value::Null, 1));
+		a.push(Meta("a".into(), 0), Meta(Value::Null, 0));
+
+		let mut b = Object::new();
+		b.push(Meta("a".into(), 0), Meta(Value::Null, 0));
+		b.push(Meta("a".into(), 0), Meta(Value::Null, 1));
+
+		assert_ne!(a, b);
+		assert_eq!(a.unordered(), b.unordered())
 	}
 }
