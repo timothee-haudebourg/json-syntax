@@ -64,7 +64,7 @@ pub use unordered::*;
 ///
 /// This type alias is useful if the same metadata is used for the top level
 /// value and the sub value to avoid repetition of the `M` type.
-pub type MetaValue<M> = Meta<Value<M>, M>;
+pub type MetaValue<M = ()> = Meta<Value<M>, M>;
 
 /// String stack capacity.
 ///
@@ -529,6 +529,18 @@ impl<M: PartialEq> UnorderedPartialEq for Value<M> {
 }
 
 impl<M: Eq> UnorderedEq for Value<M> {}
+
+impl<M> fmt::Display for Value<M> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.compact_print().fmt(f)
+	}
+}
+
+impl<M> From<Value<M>> for ::std::string::String {
+	fn from(value: Value<M>) -> Self {
+		value.to_string()
+	}
+}
 
 pub trait Traversal<'a> {
 	type Fragment;
