@@ -12,8 +12,13 @@ license = "MIT/Apache-2.0"
 readme = "README.md"
 
 [features]
+# JSON Canonicalization Scheme (JCS) implementation. 
 canonicalize = [ "ryu-js", "json-number/canonical" ]
+
+# Serialization/Deserialization support using `serde`.
 serde = [ "dep:serde", "json-number/serde" ]
+
+# Compatibility layer with the `serde_json` crate.
 serde_json = [ "dep:serde_json", "json-number/serde_json" ]
 
 [dependencies]
@@ -32,3 +37,11 @@ serde_json = { version = "1.0", optional = true }
 
 [dev-dependencies]
 serde = { version = "1.0", features = [ "derive" ] }
+
+[[example]]
+name = "serde"
+required-features = ["serde"]
+
+[[example]]
+name = "serde_json"
+required-features = ["serde_json"]
