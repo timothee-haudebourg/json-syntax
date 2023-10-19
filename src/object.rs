@@ -94,21 +94,40 @@ impl<M> Entry<M> {
 		self.value.into_metadata()
 	}
 
-	pub fn map_metadata<N>(self, mut f: impl FnMut(M) -> N) -> Entry<N> {
+	pub(crate) fn map_metadata_mut_ref<N, F>(self, f: &mut F) -> Entry<N>
+	where
+		F: FnMut(M) -> N,
+	{
+		use locspan::MapMetadataRecursively;
 		Entry {
-			key: self.key.map_metadata(&mut f),
-			value: self.value.map_metadata_recursively(f),
+			key: self.key.map_metadata(&mut *f),
+			value: self.value.map_metadata_recursively_mut_ref(f),
 		}
 	}
 
-	pub fn try_map_metadata<N, E>(
-		self,
-		mut f: impl FnMut(M) -> Result<N, E>,
-	) -> Result<Entry<N>, E> {
+	pub fn map_metadata<N, F>(self, mut f: F) -> Entry<N>
+	where
+		F: FnMut(M) -> N,
+	{
+		self.map_metadata_mut_ref::<N, F>(&mut f)
+	}
+
+	pub(crate) fn try_map_metadata_mut_ref<N, E, F>(self, f: &mut F) -> Result<Entry<N>, E>
+	where
+		F: FnMut(M) -> Result<N, E>,
+	{
+		use locspan::TryMapMetadataRecursively;
 		Ok(Entry {
-			key: self.key.try_map_metadata(&mut f)?,
-			value: self.value.try_map_metadata_recursively(f)?,
+			key: self.key.try_map_metadata(&mut *f)?,
+			value: self.value.try_map_metadata_recursively_mut_ref::<F>(f)?,
 		})
+	}
+
+	pub fn try_map_metadata<N, E, F>(self, mut f: F) -> Result<Entry<N>, E>
+	where
+		F: FnMut(M) -> Result<N, E>,
+	{
+		self.try_map_metadata_mut_ref(&mut f)
 	}
 
 	pub fn as_pair(&self) -> (&Meta<Key, M>, &MetaValue<M>) {
@@ -467,11 +486,14 @@ impl<M> Object<M> {
 	}
 
 	/// Recursively maps the metadata inside the object.
-	pub fn map_metadata<N>(self, mut f: impl FnMut(M) -> N) -> Object<N> {
+	pub(crate) fn map_metadata_mut_ref<N, F>(self, f: &mut F) -> Object<N>
+	where
+		F: FnMut(M) -> N,
+	{
 		let entries = self
 			.entries
 			.into_iter()
-			.map(|entry| entry.map_metadata(&mut f))
+			.map(|entry| entry.map_metadata_mut_ref::<N, F>(f))
 			.collect();
 
 		Object {
@@ -480,20 +502,36 @@ impl<M> Object<M> {
 		}
 	}
 
+	/// Recursively maps the metadata inside the object.
+	pub fn map_metadata<N, F>(self, mut f: F) -> Object<N>
+	where
+		F: FnMut(M) -> N,
+	{
+		self.map_metadata_mut_ref::<N, F>(&mut f)
+	}
+
 	/// Tries to recursively maps the metadata inside the object.
-	pub fn try_map_metadata<N, E>(
-		self,
-		mut f: impl FnMut(M) -> Result<N, E>,
-	) -> Result<Object<N>, E> {
+	pub(crate) fn try_map_metadata_mut_ref<N, E, F>(self, f: &mut F) -> Result<Object<N>, E>
+	where
+		F: FnMut(M) -> Result<N, E>,
+	{
 		let mut entries = Vec::with_capacity(self.len());
 		for entry in self.entries {
-			entries.push(entry.try_map_metadata(&mut f)?)
+			entries.push(entry.try_map_metadata_mut_ref::<N, E, F>(&mut *f)?)
 		}
 
 		Ok(Object {
 			entries,
 			indexes: self.indexes,
 		})
+	}
+
+	/// Tries to recursively maps the metadata inside the object.
+	pub fn try_map_metadata<N, E, F>(self, mut f: F) -> Result<Object<N>, E>
+	where
+		F: FnMut(M) -> Result<N, E>,
+	{
+		self.try_map_metadata_mut_ref(&mut f)
 	}
 
 	/// Sort the entries by key name.
