@@ -443,7 +443,10 @@ impl<M> Value<M> {
 	}
 
 	/// Recursively maps the metadata inside the value.
-	pub fn map_metadata<N>(self, mut f: impl FnMut(M) -> N) -> Value<N> {
+	fn map_metadata_mut_ref<N, F>(self, f: &mut F) -> Value<N>
+	where
+		F: FnMut(M) -> N,
+	{
 		match self {
 			Self::Null => Value::Null,
 			Self::Boolean(b) => Value::Boolean(b),
@@ -451,18 +454,26 @@ impl<M> Value<M> {
 			Self::String(s) => Value::String(s),
 			Self::Array(a) => Value::Array(
 				a.into_iter()
-					.map(|Meta(item, meta)| Meta(item.map_metadata(&mut f), f(meta)))
+					.map(|Meta(item, meta)| Meta(item.map_metadata_mut_ref::<N, F>(f), f(meta)))
 					.collect(),
 			),
-			Self::Object(o) => Value::Object(o.map_metadata(f)),
+			Self::Object(o) => Value::Object(o.map_metadata_mut_ref::<N, F>(f)),
 		}
 	}
 
+	/// Recursively maps the metadata inside the value.
+	pub fn map_metadata<N, F>(self, mut f: F) -> Value<N>
+	where
+		F: FnMut(M) -> N,
+	{
+		self.map_metadata_mut_ref(&mut f)
+	}
+
 	/// Tries to recursively maps the metadata inside the value.
-	pub fn try_map_metadata<N, E>(
-		self,
-		mut f: impl FnMut(M) -> Result<N, E>,
-	) -> Result<Value<N>, E> {
+	fn try_map_metadata_mut_ref<N, E, F>(self, f: &mut F) -> Result<Value<N>, E>
+	where
+		F: FnMut(M) -> Result<N, E>,
+	{
 		match self {
 			Self::Null => Ok(Value::Null),
 			Self::Boolean(b) => Ok(Value::Boolean(b)),
@@ -471,12 +482,21 @@ impl<M> Value<M> {
 			Self::Array(a) => {
 				let mut items = Vec::with_capacity(a.len());
 				for item in a {
-					items.push(item.try_map_metadata_recursively(&mut f)?)
+					use locspan::TryMapMetadataRecursively;
+					items.push(item.try_map_metadata_recursively_mut_ref::<F>(&mut *f)?)
 				}
 				Ok(Value::Array(items))
 			}
-			Self::Object(o) => Ok(Value::Object(o.try_map_metadata(f)?)),
+			Self::Object(o) => Ok(Value::Object(o.try_map_metadata_mut_ref::<N, E, F>(f)?)),
 		}
+	}
+
+	/// Tries to recursively maps the metadata inside the value.
+	pub fn try_map_metadata<N, E, F>(self, mut f: F) -> Result<Value<N>, E>
+	where
+		F: FnMut(M) -> Result<N, E>,
+	{
+		self.try_map_metadata_mut_ref::<N, E, F>(&mut f)
 	}
 
 	/// Move and return the value, leaves `null` in its place.
@@ -563,19 +583,22 @@ impl<'a, M: 'a> Traversal<'a> for Meta<Value<M>, M> {
 impl<M, N> locspan::MapMetadataRecursively<M, N> for Value<M> {
 	type Output = Value<N>;
 
-	fn map_metadata_recursively<F: FnMut(M) -> N>(self, f: F) -> Value<N> {
-		self.map_metadata(f)
+	fn map_metadata_recursively_mut_ref<F>(self, f: &mut F) -> Value<N>
+	where
+		F: FnMut(M) -> N,
+	{
+		self.map_metadata_mut_ref::<N, F>(f)
 	}
 }
 
 impl<M, N, E> locspan::TryMapMetadataRecursively<M, N, E> for Value<M> {
 	type Output = Value<N>;
 
-	fn try_map_metadata_recursively<F: FnMut(M) -> Result<N, E>>(
-		self,
-		f: F,
-	) -> Result<Value<N>, E> {
-		self.try_map_metadata(f)
+	fn try_map_metadata_recursively_mut_ref<F>(self, f: &mut F) -> Result<Value<N>, E>
+	where
+		F: FnMut(M) -> Result<N, E>,
+	{
+		self.try_map_metadata_mut_ref::<N, E, F>(f)
 	}
 }
 
@@ -711,11 +734,7 @@ impl<'a, M> StrippedFragmentRef<'a, M> {
 
 impl<'a, M> Clone for StrippedFragmentRef<'a, M> {
 	fn clone(&self) -> Self {
-		match self {
-			Self::Value(v) => Self::Value(*v),
-			Self::Entry(e) => Self::Entry(e),
-			Self::Key(k) => Self::Key(k),
-		}
+		*self
 	}
 }
 
@@ -790,11 +809,7 @@ impl<'a, M> locspan::Strip for FragmentRef<'a, M> {
 
 impl<'a, M> Clone for FragmentRef<'a, M> {
 	fn clone(&self) -> Self {
-		match self {
-			Self::Value(v) => Self::Value(*v),
-			Self::Entry(e) => Self::Entry(e),
-			Self::Key(k) => Self::Key(*k),
-		}
+		*self
 	}
 }
 
@@ -874,10 +889,40 @@ impl<'a, M> Iterator for Traverse<'a, M> {
 }
 
 #[cfg(test)]
-#[cfg(feature = "canonicalize")]
 mod tests {
 	use super::*;
 
+	#[test]
+	fn map_recursively() {
+		let value: Meta<Value<()>, ()> = json!({
+			"b": 0.00000000001,
+			"c": {
+				"foo": true,
+				"bar": false
+			},
+			"a": [ "foo", "bar" ]
+		});
+
+		value.map_metadata_recursively(|_| ());
+	}
+
+	#[test]
+	fn try_map_recursively() {
+		let value: Meta<Value<()>, ()> = json!({
+			"b": 0.00000000001,
+			"c": {
+				"foo": true,
+				"bar": false
+			},
+			"a": [ "foo", "bar" ]
+		});
+
+		value
+			.try_map_metadata_recursively::<_, std::convert::Infallible, _>(|_| Ok(()))
+			.unwrap();
+	}
+
+	#[cfg(feature = "canonicalize")]
 	#[test]
 	fn canonicalize_01() {
 		let mut value: Meta<Value<()>, ()> = json!({
@@ -897,6 +942,7 @@ mod tests {
 		)
 	}
 
+	#[cfg(feature = "canonicalize")]
 	#[test]
 	fn canonicalize_02() {
 		let mut value = Value::parse_str(
