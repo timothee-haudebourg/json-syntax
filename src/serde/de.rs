@@ -1,6 +1,3 @@
-use std::fmt;
-
-use locspan::Meta;
 use serde::{
 	de::{
 		DeserializeSeed, EnumAccess, Expected, IntoDeserializer, MapAccess, SeqAccess, Unexpected,
@@ -8,13 +5,14 @@ use serde::{
 	},
 	forward_to_deserialize_any, Deserialize,
 };
+use std::fmt;
 
 use crate::{
 	object::{Entry, Key},
 	Array, NumberBuf, Object, Value,
 };
 
-impl<M> Value<M> {
+impl Value {
 	#[cold]
 	fn invalid_type<E>(&self, exp: &dyn Expected) -> E
 	where
@@ -118,7 +116,7 @@ impl<'de> Deserialize<'de> for Value {
 				let mut vec = Vec::new();
 
 				while let Some(elem) = visitor.next_element()? {
-					vec.push(Meta(elem, ()));
+					vec.push(elem);
 				}
 
 				Ok(Value::Array(vec))
@@ -159,7 +157,7 @@ impl<'de> Deserialize<'de> for Value {
 	}
 }
 
-impl<'de, M> IntoDeserializer<'de, DeserializeErrorFragment<M>> for Value<M> {
+impl<'de> IntoDeserializer<'de, DeserializeError> for Value {
 	type Deserializer = Self;
 
 	fn into_deserializer(self) -> Self::Deserializer {
@@ -173,45 +171,6 @@ pub enum DeserializeError {
 	NonStringKey,
 }
 
-pub enum DeserializeErrorFragment<M> {
-	Outer(DeserializeError),
-	Inner(Meta<DeserializeError, M>),
-}
-
-impl<M> DeserializeErrorFragment<M> {
-	pub fn strip(self) -> DeserializeError {
-		match self {
-			Self::Outer(e) => e,
-			Self::Inner(Meta(e, _)) => e,
-		}
-	}
-
-	pub fn with_metadata(self, meta: M) -> Meta<DeserializeError, M> {
-		match self {
-			Self::Outer(e) => Meta(e, meta),
-			Self::Inner(e) => e,
-		}
-	}
-}
-
-impl<M> From<DeserializeError> for DeserializeErrorFragment<M> {
-	fn from(value: DeserializeError) -> Self {
-		Self::Outer(value)
-	}
-}
-
-impl<M> From<Meta<DeserializeError, M>> for DeserializeErrorFragment<M> {
-	fn from(value: Meta<DeserializeError, M>) -> Self {
-		Self::Inner(value)
-	}
-}
-
-impl<M> From<json_number::serde::Unexpected> for DeserializeErrorFragment<M> {
-	fn from(u: json_number::serde::Unexpected) -> Self {
-		DeserializeError::Custom(u.to_string()).into()
-	}
-}
-
 impl fmt::Display for DeserializeError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
@@ -221,36 +180,13 @@ impl fmt::Display for DeserializeError {
 	}
 }
 
-impl<M> fmt::Debug for DeserializeErrorFragment<M> {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			Self::Outer(e) => e.fmt(f),
-			Self::Inner(Meta(e, _)) => e.fmt(f),
-		}
+impl From<json_number::serde::Unexpected> for DeserializeError {
+	fn from(value: json_number::serde::Unexpected) -> Self {
+		Self::Custom(value.to_string())
 	}
 }
-
-impl<M> fmt::Display for DeserializeErrorFragment<M> {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			Self::Outer(e) => e.fmt(f),
-			Self::Inner(Meta(e, _)) => e.fmt(f),
-		}
-	}
-}
-
-impl<M> std::error::Error for DeserializeErrorFragment<M> {}
 
 impl std::error::Error for DeserializeError {}
-
-impl<M> serde::de::Error for DeserializeErrorFragment<M> {
-	fn custom<T>(msg: T) -> Self
-	where
-		T: fmt::Display,
-	{
-		DeserializeError::Custom(msg.to_string()).into()
-	}
-}
 
 impl serde::de::Error for DeserializeError {
 	fn custom<T>(msg: T) -> Self
@@ -275,8 +211,8 @@ macro_rules! deserialize_number {
 	};
 }
 
-impl<'de, M> serde::Deserializer<'de> for Value<M> {
-	type Error = DeserializeErrorFragment<M>;
+impl<'de> serde::Deserializer<'de> for Value {
+	type Error = DeserializeError;
 
 	#[inline]
 	fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -331,8 +267,8 @@ impl<'de, M> serde::Deserializer<'de> for Value<M> {
 			Value::Object(value) => {
 				let mut iter = value.into_iter();
 				let Entry {
-					key: Meta(variant, _),
-					value: Meta(value, _),
+					key: variant,
+					value,
 				} = match iter.next() {
 					Some(v) => v,
 					None => {
@@ -519,7 +455,7 @@ impl<'de, M> serde::Deserializer<'de> for Value<M> {
 	}
 }
 
-fn visit_array<'de, M, V>(a: Array<M>, visitor: V) -> Result<V::Value, DeserializeErrorFragment<M>>
+fn visit_array<'de, V>(a: Array, visitor: V) -> Result<V::Value, DeserializeError>
 where
 	V: serde::de::Visitor<'de>,
 {
@@ -537,10 +473,7 @@ where
 	}
 }
 
-fn visit_object<'de, M, V>(
-	o: Object<M>,
-	visitor: V,
-) -> Result<V::Value, DeserializeErrorFragment<M>>
+fn visit_object<'de, V>(o: Object, visitor: V) -> Result<V::Value, DeserializeError>
 where
 	V: serde::de::Visitor<'de>,
 {
@@ -558,30 +491,27 @@ where
 	}
 }
 
-struct ArrayDeserializer<M> {
-	iter: std::vec::IntoIter<Meta<Value<M>, M>>,
+struct ArrayDeserializer {
+	iter: std::vec::IntoIter<Value>,
 }
 
-impl<M> ArrayDeserializer<M> {
-	fn new(array: Array<M>) -> Self {
+impl ArrayDeserializer {
+	fn new(array: Array) -> Self {
 		Self {
 			iter: array.into_iter(),
 		}
 	}
 }
 
-impl<'de, M> SeqAccess<'de> for ArrayDeserializer<M> {
-	type Error = DeserializeErrorFragment<M>;
+impl<'de> SeqAccess<'de> for ArrayDeserializer {
+	type Error = DeserializeError;
 
 	fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>
 	where
 		T: DeserializeSeed<'de>,
 	{
 		match self.iter.next() {
-			Some(Meta(value, meta)) => seed
-				.deserialize(value)
-				.map_err(|e| e.with_metadata(meta).into())
-				.map(Some),
+			Some(value) => seed.deserialize(value).map(Some),
 			None => Ok(None),
 		}
 	}
@@ -594,13 +524,13 @@ impl<'de, M> SeqAccess<'de> for ArrayDeserializer<M> {
 	}
 }
 
-struct ObjectDeserializer<M> {
-	iter: std::vec::IntoIter<Entry<M>>,
-	value: Option<Meta<Value<M>, M>>,
+struct ObjectDeserializer {
+	iter: std::vec::IntoIter<Entry>,
+	value: Option<Value>,
 }
 
-impl<M> ObjectDeserializer<M> {
-	fn new(obj: Object<M>) -> Self {
+impl ObjectDeserializer {
+	fn new(obj: Object) -> Self {
 		Self {
 			iter: obj.into_iter(),
 			value: None,
@@ -608,23 +538,18 @@ impl<M> ObjectDeserializer<M> {
 	}
 }
 
-impl<'de, M> MapAccess<'de> for ObjectDeserializer<M> {
-	type Error = DeserializeErrorFragment<M>;
+impl<'de> MapAccess<'de> for ObjectDeserializer {
+	type Error = DeserializeError;
 
 	fn next_key_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>
 	where
 		T: DeserializeSeed<'de>,
 	{
 		match self.iter.next() {
-			Some(Entry {
-				key: Meta(key, key_meta),
-				value,
-			}) => {
+			Some(Entry { key, value }) => {
 				self.value = Some(value);
 				let key_de = MapKeyDeserializer { key };
-				seed.deserialize(key_de)
-					.map_err(|e| DeserializeErrorFragment::Inner(Meta(e, key_meta)))
-					.map(Some)
+				seed.deserialize(key_de).map(Some)
 			}
 			None => Ok(None),
 		}
@@ -635,9 +560,7 @@ impl<'de, M> MapAccess<'de> for ObjectDeserializer<M> {
 		T: DeserializeSeed<'de>,
 	{
 		match self.value.take() {
-			Some(Meta(value, meta)) => seed
-				.deserialize(value)
-				.map_err(|e| e.with_metadata(meta).into()),
+			Some(value) => seed.deserialize(value),
 			None => Err(serde::de::Error::custom("value is missing")),
 		}
 	}
@@ -730,16 +653,16 @@ impl<'de> serde::Deserializer<'de> for MapKeyDeserializer {
 	}
 }
 
-struct EnumDeserializer<M> {
+struct EnumDeserializer {
 	variant: Key,
-	value: Option<Value<M>>,
+	value: Option<Value>,
 }
 
-impl<'de, M> EnumAccess<'de> for EnumDeserializer<M> {
-	type Error = DeserializeErrorFragment<M>;
-	type Variant = VariantDeserializer<M>;
+impl<'de> EnumAccess<'de> for EnumDeserializer {
+	type Error = DeserializeError;
+	type Variant = VariantDeserializer;
 
-	fn variant_seed<V>(self, seed: V) -> Result<(V::Value, VariantDeserializer<M>), Self::Error>
+	fn variant_seed<V>(self, seed: V) -> Result<(V::Value, VariantDeserializer), Self::Error>
 	where
 		V: DeserializeSeed<'de>,
 	{
@@ -749,12 +672,12 @@ impl<'de, M> EnumAccess<'de> for EnumDeserializer<M> {
 	}
 }
 
-struct VariantDeserializer<M> {
-	value: Option<Value<M>>,
+struct VariantDeserializer {
+	value: Option<Value>,
 }
 
-impl<'de, M> VariantAccess<'de> for VariantDeserializer<M> {
-	type Error = DeserializeErrorFragment<M>;
+impl<'de> VariantAccess<'de> for VariantDeserializer {
+	type Error = DeserializeError;
 
 	fn unit_variant(self) -> Result<(), Self::Error> {
 		match self.value {

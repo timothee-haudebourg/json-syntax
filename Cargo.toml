@@ -1,6 +1,6 @@
 [package]
 name = "json-syntax"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2021"
 authors = ["Timothée Haudebourg <author@haudebourg.net>"]
 description = "Strict JSON parsing and mapping library"
@@ -12,13 +12,13 @@ license = "MIT/Apache-2.0"
 readme = "README.md"
 
 [features]
-# JSON Canonicalization Scheme (JCS) implementation. 
+## JSON Canonicalization Scheme (JCS) implementation. 
 canonicalize = [ "ryu-js", "json-number/canonical" ]
 
-# Serialization/Deserialization support using `serde`.
+## Serialization/Deserialization support using `serde`.
 serde = [ "dep:serde", "json-number/serde" ]
 
-# Compatibility layer with the `serde_json` crate.
+## Compatibility layer with the `serde_json` crate.
 serde_json = [ "dep:serde_json", "json-number/serde_json" ]
 
 [dependencies]

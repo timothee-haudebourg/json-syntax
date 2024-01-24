@@ -56,8 +56,6 @@ mod serde;
 #[cfg(feature = "serde")]
 pub use self::serde::*;
 
-#[cfg(feature = "serde_json")]
-pub use convert::*;
 pub use unordered::*;
 
 /// String stack capacity.
@@ -713,7 +711,7 @@ mod tests {
 	#[test]
 	fn canonicalize_01() {
 		use super::*;
-		let mut value: Meta<Value<()>, ()> = json!({
+		let mut value: Value = json!({
 			"b": 0.00000000001,
 			"c": {
 				"foo": true,
@@ -734,13 +732,12 @@ mod tests {
 	#[test]
 	fn canonicalize_02() {
 		use super::*;
-		let mut value = Value::parse_str(
+		let (mut value, _) = Value::parse_str(
 			"{
 			\"numbers\": [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001],
 			\"string\": \"\\u20ac$\\u000F\\u000aA'\\u0042\\u0022\\u005c\\\\\\\"\\/\",
 			\"literals\": [null, true, false]
 		}",
-			|span| span,
 		)
 		.unwrap();
 

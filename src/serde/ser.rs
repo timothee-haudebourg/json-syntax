@@ -1,11 +1,10 @@
-use locspan::Meta;
 use serde::{ser::Impossible, Serialize};
 use smallstr::SmallString;
 use std::fmt;
 
 use crate::{object::Key, Array, NumberBuf, Object, Value};
 
-impl<M> Serialize for Value<M> {
+impl Serialize for Value {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: serde::Serializer,
@@ -20,7 +19,7 @@ impl<M> Serialize for Value<M> {
 				let mut seq = serializer.serialize_seq(Some(a.len()))?;
 
 				for item in a {
-					seq.serialize_element(item.value())?
+					seq.serialize_element(item)?
 				}
 
 				seq.end()
@@ -30,7 +29,7 @@ impl<M> Serialize for Value<M> {
 	}
 }
 
-impl<M> Serialize for Object<M> {
+impl Serialize for Object {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: serde::Serializer,
@@ -39,7 +38,7 @@ impl<M> Serialize for Object<M> {
 		let mut map = serializer.serialize_map(Some(self.len()))?;
 
 		for entry in self {
-			map.serialize_entry(entry.key.as_str(), entry.stripped_value())?;
+			map.serialize_entry(entry.key.as_str(), &entry.value)?;
 		}
 
 		map.end()
@@ -73,43 +72,23 @@ impl serde::ser::Error for SerializeError {
 }
 
 /// [`Value`] serializer.
-pub struct Serializer<F> {
-	metadata_builder: F,
-}
+pub struct Serializer;
 
-impl<F, M> Serializer<F>
-where
-	F: Fn() -> M,
-{
-	/// Creates a new [`Value<M>`] serializer using the given function to
-	/// annotate the output value.
-	pub fn new(metadata_builder: F) -> Self {
-		Self { metadata_builder }
-	}
-
-	fn build_metadata(&self) -> M {
-		(self.metadata_builder)()
-	}
-}
-
-impl<F, M> serde::Serializer for Serializer<F>
-where
-	F: Clone + Fn() -> M,
-{
-	type Ok = Meta<Value<M>, M>;
+impl serde::Serializer for Serializer {
+	type Ok = Value;
 	type Error = SerializeError;
 
-	type SerializeSeq = SerializeArray<M, F>;
-	type SerializeTuple = SerializeArray<M, F>;
-	type SerializeTupleStruct = SerializeArray<M, F>;
-	type SerializeTupleVariant = SerializeTupleVariant<M, F>;
-	type SerializeMap = SerializeObject<M, F>;
-	type SerializeStruct = SerializeObject<M, F>;
-	type SerializeStructVariant = SerializeStructVariant<M, F>;
+	type SerializeSeq = SerializeArray;
+	type SerializeTuple = SerializeArray;
+	type SerializeTupleStruct = SerializeArray;
+	type SerializeTupleVariant = SerializeTupleVariant;
+	type SerializeMap = SerializeObject;
+	type SerializeStruct = SerializeObject;
+	type SerializeStructVariant = SerializeStructVariant;
 
 	#[inline(always)]
 	fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(Value::Boolean(v), self.build_metadata()))
+		Ok(Value::Boolean(v))
 	}
 
 	#[inline(always)]
@@ -129,7 +108,7 @@ where
 
 	#[inline(always)]
 	fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(Value::Number(v.into()), self.build_metadata()))
+		Ok(Value::Number(v.into()))
 	}
 
 	#[inline(always)]
@@ -149,53 +128,44 @@ where
 
 	#[inline(always)]
 	fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(Value::Number(v.into()), self.build_metadata()))
+		Ok(Value::Number(v.into()))
 	}
 
 	#[inline(always)]
 	fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(
-			NumberBuf::try_from(v)
-				.map(Value::Number)
-				.unwrap_or(Value::Null),
-			self.build_metadata(),
-		))
+		Ok(NumberBuf::try_from(v)
+			.map(Value::Number)
+			.unwrap_or(Value::Null))
 	}
 
 	#[inline(always)]
 	fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(
-			NumberBuf::try_from(v)
-				.map(Value::Number)
-				.unwrap_or(Value::Null),
-			self.build_metadata(),
-		))
+		Ok(NumberBuf::try_from(v)
+			.map(Value::Number)
+			.unwrap_or(Value::Null))
 	}
 
 	#[inline(always)]
 	fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
 		let mut s = SmallString::new();
 		s.push(v);
-		Ok(Meta(Value::String(s), self.build_metadata()))
+		Ok(Value::String(s))
 	}
 
 	#[inline(always)]
 	fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(Value::String(v.into()), self.build_metadata()))
+		Ok(Value::String(v.into()))
 	}
 
 	#[inline(always)]
 	fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
-		let vec = v
-			.iter()
-			.map(|&b| Meta(Value::Number(b.into()), self.build_metadata()))
-			.collect();
-		Ok(Meta(Value::Array(vec), self.build_metadata()))
+		let vec = v.iter().map(|&b| Value::Number(b.into())).collect();
+		Ok(Value::Array(vec))
 	}
 
 	#[inline(always)]
 	fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(Value::Null, self.build_metadata()))
+		Ok(Value::Null)
 	}
 
 	#[inline(always)]
@@ -237,10 +207,8 @@ where
 		T: Serialize,
 	{
 		let mut obj = Object::new();
-		let meta = self.build_metadata();
-		let key_metadata = self.build_metadata();
-		obj.insert(Meta(variant.into(), key_metadata), value.serialize(self)?);
-		Ok(Meta(Value::Object(obj), meta))
+		obj.insert(variant.into(), value.serialize(self)?);
+		Ok(Value::Object(obj))
 	}
 
 	#[inline(always)]
@@ -260,7 +228,6 @@ where
 	fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
 		Ok(SerializeArray {
 			array: Vec::with_capacity(len.unwrap_or(0)),
-			metadata_builder: self.metadata_builder,
 		})
 	}
 
@@ -288,7 +255,6 @@ where
 		Ok(SerializeTupleVariant {
 			name: variant.into(),
 			array: Vec::with_capacity(len),
-			metadata_builder: self.metadata_builder,
 		})
 	}
 
@@ -296,7 +262,6 @@ where
 		Ok(SerializeObject {
 			obj: Object::new(),
 			next_key: None,
-			metadata_builder: self.metadata_builder,
 		})
 	}
 
@@ -318,7 +283,6 @@ where
 		Ok(SerializeStructVariant {
 			name: variant.into(),
 			obj: Object::new(),
-			metadata_builder: self.metadata_builder,
 		})
 	}
 
@@ -326,26 +290,23 @@ where
 	where
 		T: fmt::Display,
 	{
-		Ok(Meta(
-			Value::String(value.to_string().into()),
-			self.build_metadata(),
-		))
+		Ok(Value::String(value.to_string().into()))
 	}
 }
 
-pub struct KeySerializer<M>(M);
+pub struct KeySerializer;
 
-impl<M> serde::Serializer for KeySerializer<M> {
-	type Ok = Meta<Key, M>;
+impl serde::Serializer for KeySerializer {
+	type Ok = Key;
 	type Error = SerializeError;
 
-	type SerializeSeq = Impossible<Meta<Key, M>, SerializeError>;
-	type SerializeTuple = Impossible<Meta<Key, M>, SerializeError>;
-	type SerializeTupleStruct = Impossible<Meta<Key, M>, SerializeError>;
-	type SerializeTupleVariant = Impossible<Meta<Key, M>, SerializeError>;
-	type SerializeMap = Impossible<Meta<Key, M>, SerializeError>;
-	type SerializeStruct = Impossible<Meta<Key, M>, SerializeError>;
-	type SerializeStructVariant = Impossible<Meta<Key, M>, SerializeError>;
+	type SerializeSeq = Impossible<Key, SerializeError>;
+	type SerializeTuple = Impossible<Key, SerializeError>;
+	type SerializeTupleStruct = Impossible<Key, SerializeError>;
+	type SerializeTupleVariant = Impossible<Key, SerializeError>;
+	type SerializeMap = Impossible<Key, SerializeError>;
+	type SerializeStruct = Impossible<Key, SerializeError>;
+	type SerializeStructVariant = Impossible<Key, SerializeError>;
 
 	#[inline]
 	fn serialize_unit_variant(
@@ -354,7 +315,7 @@ impl<M> serde::Serializer for KeySerializer<M> {
 		_variant_index: u32,
 		variant: &'static str,
 	) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(variant.into(), self.0))
+		Ok(variant.into())
 	}
 
 	#[inline]
@@ -374,35 +335,35 @@ impl<M> serde::Serializer for KeySerializer<M> {
 	}
 
 	fn serialize_i8(self, value: i8) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(value.to_string().into(), self.0))
+		Ok(value.to_string().into())
 	}
 
 	fn serialize_i16(self, value: i16) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(value.to_string().into(), self.0))
+		Ok(value.to_string().into())
 	}
 
 	fn serialize_i32(self, value: i32) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(value.to_string().into(), self.0))
+		Ok(value.to_string().into())
 	}
 
 	fn serialize_i64(self, value: i64) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(value.to_string().into(), self.0))
+		Ok(value.to_string().into())
 	}
 
 	fn serialize_u8(self, value: u8) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(value.to_string().into(), self.0))
+		Ok(value.to_string().into())
 	}
 
 	fn serialize_u16(self, value: u16) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(value.to_string().into(), self.0))
+		Ok(value.to_string().into())
 	}
 
 	fn serialize_u32(self, value: u32) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(value.to_string().into(), self.0))
+		Ok(value.to_string().into())
 	}
 
 	fn serialize_u64(self, value: u64) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(value.to_string().into(), self.0))
+		Ok(value.to_string().into())
 	}
 
 	fn serialize_f32(self, _value: f32) -> Result<Self::Ok, Self::Error> {
@@ -417,12 +378,12 @@ impl<M> serde::Serializer for KeySerializer<M> {
 	fn serialize_char(self, value: char) -> Result<Self::Ok, Self::Error> {
 		let mut s = Key::new();
 		s.push(value);
-		Ok(Meta(s, self.0))
+		Ok(s)
 	}
 
 	#[inline]
 	fn serialize_str(self, value: &str) -> Result<Self::Ok, Self::Error> {
-		Ok(Meta(value.into(), self.0))
+		Ok(value.into())
 	}
 
 	fn serialize_bytes(self, _value: &[u8]) -> Result<Self::Ok, Self::Error> {
@@ -513,51 +474,33 @@ impl<M> serde::Serializer for KeySerializer<M> {
 	where
 		T: ?Sized + fmt::Display,
 	{
-		Ok(Meta(value.to_string().into(), self.0))
+		Ok(value.to_string().into())
 	}
 }
 
-pub struct SerializeArray<M, F> {
-	array: Array<M>,
-	metadata_builder: F,
+pub struct SerializeArray {
+	array: Array,
 }
 
-impl<M, F> SerializeArray<M, F>
-where
-	F: Fn() -> M,
-{
-	fn build_metadata(&self) -> M {
-		(self.metadata_builder)()
-	}
-}
-
-impl<M, F> serde::ser::SerializeSeq for SerializeArray<M, F>
-where
-	F: Clone + Fn() -> M,
-{
-	type Ok = Meta<Value<M>, M>;
+impl serde::ser::SerializeSeq for SerializeArray {
+	type Ok = Value;
 	type Error = SerializeError;
 
 	fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
 	where
 		T: Serialize,
 	{
-		self.array
-			.push(value.serialize(Serializer::new(self.metadata_builder.clone()))?);
+		self.array.push(value.serialize(Serializer)?);
 		Ok(())
 	}
 
 	fn end(self) -> Result<Self::Ok, Self::Error> {
-		let meta = self.build_metadata();
-		Ok(Meta(Value::Array(self.array), meta))
+		Ok(Value::Array(self.array))
 	}
 }
 
-impl<M, F> serde::ser::SerializeTuple for SerializeArray<M, F>
-where
-	F: Clone + Fn() -> M,
-{
-	type Ok = Meta<Value<M>, M>;
+impl serde::ser::SerializeTuple for SerializeArray {
+	type Ok = Value;
 	type Error = SerializeError;
 
 	fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
@@ -572,11 +515,8 @@ where
 	}
 }
 
-impl<M, F> serde::ser::SerializeTupleStruct for SerializeArray<M, F>
-where
-	F: Clone + Fn() -> M,
-{
-	type Ok = Meta<Value<M>, M>;
+impl serde::ser::SerializeTupleStruct for SerializeArray {
+	type Ok = Value;
 	type Error = SerializeError;
 
 	fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
@@ -591,72 +531,38 @@ where
 	}
 }
 
-pub struct SerializeTupleVariant<M, F> {
+pub struct SerializeTupleVariant {
 	name: Key,
-	array: Array<M>,
-	metadata_builder: F,
+	array: Array,
 }
 
-impl<M, F> SerializeTupleVariant<M, F>
-where
-	F: Fn() -> M,
-{
-	fn build_metadata(&self) -> M {
-		(self.metadata_builder)()
-	}
-}
-
-impl<M, F> serde::ser::SerializeTupleVariant for SerializeTupleVariant<M, F>
-where
-	F: Clone + Fn() -> M,
-{
-	type Ok = Meta<Value<M>, M>;
+impl serde::ser::SerializeTupleVariant for SerializeTupleVariant {
+	type Ok = Value;
 	type Error = SerializeError;
 
 	fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
 	where
 		T: Serialize,
 	{
-		self.array
-			.push(value.serialize(Serializer::new(self.metadata_builder.clone()))?);
+		self.array.push(value.serialize(Serializer)?);
 		Ok(())
 	}
 
 	fn end(self) -> Result<Self::Ok, Self::Error> {
 		let mut obj = Object::new();
+		obj.insert(self.name, Value::Array(self.array));
 
-		let key_meta = self.build_metadata();
-		let value_meta = self.build_metadata();
-		let meta = self.build_metadata();
-		obj.insert(
-			Meta(self.name, key_meta),
-			Meta(Value::Array(self.array), value_meta),
-		);
-
-		Ok(Meta(Value::Object(obj), meta))
+		Ok(Value::Object(obj))
 	}
 }
 
-pub struct SerializeStructVariant<M, F> {
+pub struct SerializeStructVariant {
 	name: Key,
-	obj: Object<M>,
-	metadata_builder: F,
+	obj: Object,
 }
 
-impl<M, F> SerializeStructVariant<M, F>
-where
-	F: Fn() -> M,
-{
-	fn build_metadata(&self) -> M {
-		(self.metadata_builder)()
-	}
-}
-
-impl<M, F> serde::ser::SerializeStructVariant for SerializeStructVariant<M, F>
-where
-	F: Clone + Fn() -> M,
-{
-	type Ok = Meta<Value<M>, M>;
+impl serde::ser::SerializeStructVariant for SerializeStructVariant {
+	type Ok = Value;
 	type Error = SerializeError;
 
 	fn serialize_field<T: ?Sized>(
@@ -667,56 +573,33 @@ where
 	where
 		T: Serialize,
 	{
-		let key = Meta(key.into(), self.build_metadata());
-		self.obj.insert(
-			key,
-			value.serialize(Serializer::new(self.metadata_builder.clone()))?,
-		);
+		let key = key.into();
+		self.obj.insert(key, value.serialize(Serializer)?);
 		Ok(())
 	}
 
 	fn end(self) -> Result<Self::Ok, Self::Error> {
 		let mut obj = Object::new();
+		obj.insert(self.name, Value::Object(self.obj));
 
-		let key_meta = self.build_metadata();
-		let value_meta = self.build_metadata();
-		let meta = self.build_metadata();
-		obj.insert(
-			Meta(self.name, key_meta),
-			Meta(Value::Object(self.obj), value_meta),
-		);
-
-		Ok(Meta(Value::Object(obj), meta))
+		Ok(Value::Object(obj))
 	}
 }
 
-pub struct SerializeObject<M, F> {
-	obj: Object<M>,
-	next_key: Option<Meta<Key, M>>,
-	metadata_builder: F,
+pub struct SerializeObject {
+	obj: Object,
+	next_key: Option<Key>,
 }
 
-impl<M, F> SerializeObject<M, F>
-where
-	F: Fn() -> M,
-{
-	fn build_metadata(&self) -> M {
-		(self.metadata_builder)()
-	}
-}
-
-impl<M, F> serde::ser::SerializeMap for SerializeObject<M, F>
-where
-	F: Clone + Fn() -> M,
-{
-	type Ok = Meta<Value<M>, M>;
+impl serde::ser::SerializeMap for SerializeObject {
+	type Ok = Value;
 	type Error = SerializeError;
 
 	fn serialize_key<T: ?Sized>(&mut self, key: &T) -> Result<(), Self::Error>
 	where
 		T: Serialize,
 	{
-		self.next_key = Some(key.serialize(KeySerializer(self.build_metadata()))?);
+		self.next_key = Some(key.serialize(KeySerializer)?);
 		Ok(())
 	}
 
@@ -728,24 +611,17 @@ where
 			.next_key
 			.take()
 			.expect("serialize_value called before serialize_key");
-		self.obj.insert(
-			key,
-			value.serialize(Serializer::new(self.metadata_builder.clone()))?,
-		);
+		self.obj.insert(key, value.serialize(Serializer)?);
 		Ok(())
 	}
 
 	fn end(self) -> Result<Self::Ok, Self::Error> {
-		let meta = self.build_metadata();
-		Ok(Meta(Value::Object(self.obj), meta))
+		Ok(Value::Object(self.obj))
 	}
 }
 
-impl<M, F> serde::ser::SerializeStruct for SerializeObject<M, F>
-where
-	F: Clone + Fn() -> M,
-{
-	type Ok = Meta<Value<M>, M>;
+impl serde::ser::SerializeStruct for SerializeObject {
+	type Ok = Value;
 	type Error = SerializeError;
 
 	fn serialize_field<T: ?Sized>(
