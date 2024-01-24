@@ -16,42 +16,18 @@ where
 	}
 }
 
-fn make_insert_hash<K, S>(hash_builder: &S, val: &K) -> u64
-where
-	K: ?Sized + Hash,
-	S: BuildHasher,
-{
-	use core::hash::Hasher;
-	let mut state = hash_builder.build_hasher();
-	val.hash(&mut state);
-	state.finish()
-}
-
-fn equivalent_key<'a, M, Q>(entries: &'a [Entry<M>], k: &'a Q) -> impl 'a + Fn(&Indexes) -> bool
+fn equivalent_key<'a, Q>(entries: &'a [Entry], k: &'a Q) -> impl 'a + Fn(&Indexes) -> bool
 where
 	Q: ?Sized + Equivalent<Key>,
 {
-	move |indexes| k.equivalent(entries[indexes.rep].key.value())
+	move |indexes| k.equivalent(&entries[indexes.rep].key)
 }
 
-fn make_hasher<'a, M, S>(
-	entries: &'a [Entry<M>],
-	hash_builder: &'a S,
-) -> impl 'a + Fn(&Indexes) -> u64
+fn make_hasher<'a, S>(entries: &'a [Entry], hash_builder: &'a S) -> impl 'a + Fn(&Indexes) -> u64
 where
 	S: BuildHasher,
 {
-	move |indexes| make_hash::<S>(hash_builder, entries[indexes.rep].key.value())
-}
-
-fn make_hash<S>(hash_builder: &S, val: &Key) -> u64
-where
-	S: BuildHasher,
-{
-	use core::hash::Hasher;
-	let mut state = hash_builder.build_hasher();
-	val.hash(&mut state);
-	state.finish()
+	move |indexes| hash_builder.hash_one(&entries[indexes.rep].key)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -191,20 +167,20 @@ impl<S> IndexMap<S> {
 }
 
 impl<S: BuildHasher> IndexMap<S> {
-	pub fn get<M, Q: ?Sized>(&self, entries: &[Entry<M>], key: &Q) -> Option<&Indexes>
+	pub fn get<Q: ?Sized>(&self, entries: &[Entry], key: &Q) -> Option<&Indexes>
 	where
 		Q: Hash + Equivalent<Key>,
 	{
-		let hash = make_insert_hash(&self.hash_builder, key);
+		let hash = self.hash_builder.hash_one(key);
 		self.table.get(hash, equivalent_key(entries, key))
 	}
 
 	/// Associates the given `key` to `index`.
 	///
 	/// Returns `true` if no index was already associated to the key.
-	pub fn insert<M>(&mut self, entries: &[Entry<M>], index: usize) -> bool {
-		let key = entries[index].key.value();
-		let hash = make_insert_hash(&self.hash_builder, key);
+	pub fn insert(&mut self, entries: &[Entry], index: usize) -> bool {
+		let key = &entries[index].key;
+		let hash = self.hash_builder.hash_one(key);
 		match self.table.get_mut(hash, equivalent_key(entries, key)) {
 			Some(indexes) => {
 				indexes.insert(index);
@@ -214,7 +190,7 @@ impl<S: BuildHasher> IndexMap<S> {
 				self.table.insert(
 					hash,
 					Indexes::new(index),
-					make_hasher::<M, S>(entries, &self.hash_builder),
+					make_hasher::<S>(entries, &self.hash_builder),
 				);
 				true
 			}
@@ -222,9 +198,9 @@ impl<S: BuildHasher> IndexMap<S> {
 	}
 
 	/// Removes the association between the given key and index.
-	pub fn remove<M>(&mut self, entries: &[Entry<M>], index: usize) {
-		let key = entries[index].key.value();
-		let hash = make_insert_hash(&self.hash_builder, key);
+	pub fn remove(&mut self, entries: &[Entry], index: usize) {
+		let key = &entries[index].key;
+		let hash = self.hash_builder.hash_one(key);
 		if let Some(bucket) = self.table.find(hash, equivalent_key(entries, key)) {
 			let indexes = unsafe { bucket.as_mut() };
 
@@ -253,14 +229,13 @@ impl<S: BuildHasher> IndexMap<S> {
 mod tests {
 	use super::*;
 	use crate::Value;
-	use locspan::Meta;
 
 	#[test]
 	fn insert() {
 		let entries = [
-			Entry::new(Meta("a".into(), ()), Meta(Value::Null, ())),
-			Entry::new(Meta("b".into(), ()), Meta(Value::Null, ())),
-			Entry::new(Meta("a".into(), ()), Meta(Value::Null, ())),
+			Entry::new("a".into(), Value::Null),
+			Entry::new("b".into(), Value::Null),
+			Entry::new("a".into(), Value::Null),
 		];
 
 		let mut indexes: IndexMap = IndexMap::default();
@@ -282,9 +257,9 @@ mod tests {
 	#[test]
 	fn remove1() {
 		let entries = [
-			Entry::new(Meta("a".into(), ()), Meta(Value::Null, ())),
-			Entry::new(Meta("b".into(), ()), Meta(Value::Null, ())),
-			Entry::new(Meta("a".into(), ()), Meta(Value::Null, ())),
+			Entry::new("a".into(), Value::Null),
+			Entry::new("b".into(), Value::Null),
+			Entry::new("a".into(), Value::Null),
 		];
 
 		let mut indexes: IndexMap = IndexMap::default();
@@ -305,9 +280,9 @@ mod tests {
 	#[test]
 	fn remove2() {
 		let entries = [
-			Entry::new(Meta("a".into(), ()), Meta(Value::Null, ())),
-			Entry::new(Meta("b".into(), ()), Meta(Value::Null, ())),
-			Entry::new(Meta("a".into(), ()), Meta(Value::Null, ())),
+			Entry::new("a".into(), Value::Null),
+			Entry::new("b".into(), Value::Null),
+			Entry::new("a".into(), Value::Null),
 		];
 
 		let mut indexes: IndexMap = IndexMap::default();

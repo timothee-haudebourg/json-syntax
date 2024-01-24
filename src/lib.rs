@@ -1,9 +1,8 @@
 //! This library provides a strict JSON parser as defined by
 //! [RFC 8259](https://datatracker.ietf.org/doc/html/rfc8259) and
 //! [ECMA-404](https://www.ecma-international.org/publications-and-standards/standards/ecma-404/).
-//! It is built on the [`locspan`](https://crates.io/crates/locspan) library
-//! so as to keep track of the position of each JSON value in the parsed
-//! document.
+//! Parsing values generates a [`CodeMap`] that keeps track of the position of
+//! each JSON value fragment in the parsed document.
 //!
 //! # Features
 //!
@@ -33,18 +32,18 @@
 //!
 //! let filename = "tests/inputs/y_structure_500_nested_arrays.json";
 //! let input = fs::read_to_string(filename).unwrap();
-//! let mut value = Value::parse_str(&input, |span| span).expect("parse error");
+//! let mut value = Value::parse_str(&input).expect("parse error").0;
 //! println!("value: {}", value.pretty_print());
 //! ```
 pub use json_number::Number;
-use locspan::Meta;
-use locspan_derive::*;
 use smallvec::SmallVec;
 use std::fmt;
 
+pub mod code_map;
 pub mod object;
 pub mod parse;
 mod unordered;
+pub use code_map::CodeMap;
 pub use parse::Parse;
 pub mod print;
 pub use print::Print;
@@ -57,14 +56,9 @@ mod serde;
 #[cfg(feature = "serde")]
 pub use self::serde::*;
 
+#[cfg(feature = "serde_json")]
 pub use convert::*;
 pub use unordered::*;
-
-/// Value wrapped inside a [`locspan::Meta`] container.
-///
-/// This type alias is useful if the same metadata is used for the top level
-/// value and the sub value to avoid repetition of the `M` type.
-pub type MetaValue<M = ()> = Meta<Value<M>, M>;
 
 /// String stack capacity.
 ///
@@ -76,15 +70,7 @@ pub const SMALL_STRING_CAPACITY: usize = 16;
 pub type String = smallstr::SmallString<[u8; SMALL_STRING_CAPACITY]>;
 
 /// Array.
-pub type Array<M = ()> = Vec<Meta<Value<M>, M>>;
-
-impl<M: PartialEq> UnorderedPartialEq for Array<M> {
-	fn unordered_eq(&self, other: &Self) -> bool {
-		self.len() == other.len() && self.iter().zip(other).all(|(a, b)| a.unordered_eq(b))
-	}
-}
-
-impl<M: Eq> UnorderedEq for Array<M> {}
+pub type Array = Vec<Value>;
 
 pub use object::Object;
 
@@ -121,13 +107,7 @@ impl fmt::Display for Kind {
 	}
 }
 
-/// Value.
-///
-/// The type parameter `M` is the type of metadata attached to each syntax node
-/// (values, sub values and object keys).
-/// The metadata is derived from the [`locspan::Span`] of the node in the source
-/// document using the metadata builder function passed to the parsing function
-/// (see the [`Parse`] trait for more details).
+/// JSON Value.
 ///
 /// # Parsing
 ///
@@ -137,36 +117,36 @@ impl fmt::Display for Kind {
 /// ## Example
 ///
 /// ```
-/// use json_syntax::{Value, Parse};
-/// use locspan::{Meta, Span};
-///
-/// let value: Meta<Value<Span>, Span> = Value::parse_str("{ \"key\": \"value\" }", |span| span).unwrap();
+/// use json_syntax::{Value, Parse, CodeMap};
+/// let (value, code_map) = Value::parse_str("{ \"key\": \"value\" }").unwrap();
 /// ```
 ///
-/// You don't need to specify the return type, here only shown to make it clear.
-/// Furthermore the `MetaValue<Span>` type alias can be used instead of
-/// `Meta<Value<Span>, Span>` to avoid repetition of the metadata type.
+/// The `code_map` value of type [`CodeMap`] contains code-mapping information
+/// about all the fragments of the JSON value (their location in the source
+/// text).
 ///
 /// # Comparison
 ///
 /// This type implements the usual comparison traits `PartialEq`, `Eq`,
-/// `PartialOrd` and `Ord`. However these implementations will also compare the
-/// metadata.
-/// If you want to do comparisons while ignoring ths metadata, you can use
-/// the [`locspan::Stripped`] type
-/// (combined with the [`locspan::BorrowStripped`] trait).
+/// `PartialOrd` and `Ord`. However by default JSON object entries ordering
+/// matters, meaning that `{ "a": 0, "b": 1 }` is **not** equal to
+/// `{ "b": 1, "a": 0 }`.
+/// If you want to do comparisons while ignoring entries ordering, you can use
+/// the [`Unordered`] type (combined with the [`UnorderedPartialEq`] trait).
+/// Any `T` reference can be turned into an [`Unordered<T>`] reference
+/// at will using the [`BorrowUnordered::as_unordered`] method.
 ///
 /// ## Example
 ///
 /// ```
-/// use json_syntax::{Value, Parse};
-/// use locspan::BorrowStripped;
+/// use json_syntax::{json, Unordered, BorrowUnordered};
 ///
-/// let a = Value::parse_str("null", |_| 0).unwrap();
-/// let b = Value::parse_str("null", |_| 1).unwrap();
+/// let a = json!({ "a": 0, "b": 1 });
+/// let b = json!({ "b": 1, "a": 0 });
 ///
-/// assert_ne!(a, b); // not equals because the metadata is different.
-/// assert_eq!(a.stripped(), b.stripped()); // equals because the metadata is ignored.
+/// assert_ne!(a, b); // not equals entries are in a different order.
+/// assert_eq!(a.as_unordered(), b.as_unordered()); // equals modulo entry order.
+/// assert_eq!(Unordered(a), Unordered(b)); // equals modulo entry order.
 /// ```
 ///
 /// # Printing
@@ -178,7 +158,7 @@ impl fmt::Display for Kind {
 /// ```
 /// use json_syntax::{Value, Parse, Print};
 ///
-/// let value = Value::parse_str("[ 0, 1, { \"key\": \"value\" }, null ]", |span| span).unwrap();
+/// let value = Value::parse_str("[ 0, 1, { \"key\": \"value\" }, null ]").unwrap().0;
 ///
 /// println!("{}", value.pretty_print()); // multi line, indent with 2 spaces
 /// println!("{}", value.inline_print()); // single line, spaces
@@ -188,42 +168,51 @@ impl fmt::Display for Kind {
 /// options.indent = json_syntax::print::Indent::Tabs(1);
 /// println!("{}", value.print_with(options)); // multi line, indent with tabs
 /// ```
-#[derive(
-	Clone,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Hash,
-	Debug,
-	StrippedPartialEq,
-	StrippedEq,
-	StrippedPartialOrd,
-	StrippedOrd,
-	StrippedHash,
-)]
-#[locspan(ignore(M))]
-pub enum Value<M = ()> {
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub enum Value {
 	/// `null`.
 	Null,
 
 	/// Boolean `true` or `false`.
-	Boolean(#[locspan(stripped)] bool),
+	Boolean(bool),
 
 	/// Number.
-	Number(#[locspan(stripped)] NumberBuf),
+	Number(NumberBuf),
 
 	/// String.
-	String(#[locspan(stripped)] String),
+	String(String),
 
 	/// Array.
-	Array(Array<M>),
+	Array(Array),
 
 	/// Object.
-	Object(Object<M>),
+	Object(Object),
 }
 
-impl<M> Value<M> {
+pub fn get_array_fragment(array: &[Value], mut index: usize) -> Result<FragmentRef, usize> {
+	for v in array {
+		match v.get_fragment(index) {
+			Ok(value) => return Ok(value),
+			Err(i) => index = i,
+		}
+	}
+
+	Err(index)
+}
+
+impl Value {
+	pub fn get_fragment(&self, index: usize) -> Result<FragmentRef, usize> {
+		if index == 0 {
+			Ok(FragmentRef::Value(self))
+		} else {
+			match self {
+				Self::Array(a) => get_array_fragment(a, index - 1),
+				Self::Object(o) => o.get_fragment(index - 1),
+				_ => Err(index - 1),
+			}
+		}
+	}
+
 	#[inline]
 	pub fn kind(&self) -> Kind {
 		match self {
@@ -336,7 +325,7 @@ impl<M> Value<M> {
 	}
 
 	#[inline]
-	pub fn as_array(&self) -> Option<&[Meta<Self, M>]> {
+	pub fn as_array(&self) -> Option<&[Self]> {
 		match self {
 			Self::Array(a) => Some(a),
 			_ => None,
@@ -344,7 +333,7 @@ impl<M> Value<M> {
 	}
 
 	#[inline]
-	pub fn as_array_mut(&mut self) -> Option<&mut Array<M>> {
+	pub fn as_array_mut(&mut self) -> Option<&mut Array> {
 		match self {
 			Self::Array(a) => Some(a),
 			_ => None,
@@ -356,15 +345,15 @@ impl<M> Value<M> {
 	/// Returns the input value as is if it is already an array,
 	/// or puts it in a slice with a single element if it is not.
 	#[inline]
-	pub fn force_as_array(value: &Meta<Self, M>) -> Meta<&[Meta<Self, M>], &M> {
-		match value {
-			Meta(Self::Array(a), meta) => Meta(a, meta),
-			other @ Meta(_, meta) => Meta(core::slice::from_ref(other), meta),
+	pub fn force_as_array(&self) -> &[Self] {
+		match self {
+			Self::Array(a) => a,
+			other => core::slice::from_ref(other),
 		}
 	}
 
 	#[inline]
-	pub fn as_object(&self) -> Option<&Object<M>> {
+	pub fn as_object(&self) -> Option<&Object> {
 		match self {
 			Self::Object(o) => Some(o),
 			_ => None,
@@ -372,7 +361,7 @@ impl<M> Value<M> {
 	}
 
 	#[inline]
-	pub fn as_object_mut(&mut self) -> Option<&mut Object<M>> {
+	pub fn as_object_mut(&mut self) -> Option<&mut Object> {
 		match self {
 			Self::Object(o) => Some(o),
 			_ => None,
@@ -404,7 +393,7 @@ impl<M> Value<M> {
 	}
 
 	#[inline]
-	pub fn into_array(self) -> Option<Array<M>> {
+	pub fn into_array(self) -> Option<Array> {
 		match self {
 			Self::Array(a) => Some(a),
 			_ => None,
@@ -412,22 +401,22 @@ impl<M> Value<M> {
 	}
 
 	#[inline]
-	pub fn into_object(self) -> Option<Object<M>> {
+	pub fn into_object(self) -> Option<Object> {
 		match self {
 			Self::Object(o) => Some(o),
 			_ => None,
 		}
 	}
 
-	pub fn traverse(&self) -> TraverseStripped<M> {
+	pub fn traverse(&self) -> Traverse {
 		let mut stack = SmallVec::new();
-		stack.push(StrippedFragmentRef::Value(self));
-		TraverseStripped { stack }
+		stack.push(FragmentRef::Value(self));
+		Traverse { offset: 0, stack }
 	}
 
 	/// Recursively count the number of values for which `f` returns `true`.
-	pub fn count(&self, mut f: impl FnMut(StrippedFragmentRef<M>) -> bool) -> usize {
-		self.traverse().filter(|i| f(*i)).count()
+	pub fn count(&self, mut f: impl FnMut(usize, FragmentRef) -> bool) -> usize {
+		self.traverse().filter(|(i, q)| f(*i, *q)).count()
 	}
 
 	/// Returns the volume of the value.
@@ -435,68 +424,9 @@ impl<M> Value<M> {
 	/// The volume is the sum of all values and recursively nested values
 	/// included in `self`, including `self` (the volume is at least `1`).
 	///
-	/// This is equivalent to `value.traverse().filter(StrippedFragmentRef::is_value).count()`.
+	/// This is equivalent to `value.traverse().filter(|(_, f)| f.is_value()).count()`.
 	pub fn volume(&self) -> usize {
-		self.traverse()
-			.filter(StrippedFragmentRef::is_value)
-			.count()
-	}
-
-	/// Recursively maps the metadata inside the value.
-	fn map_metadata_mut_ref<N, F>(self, f: &mut F) -> Value<N>
-	where
-		F: FnMut(M) -> N,
-	{
-		match self {
-			Self::Null => Value::Null,
-			Self::Boolean(b) => Value::Boolean(b),
-			Self::Number(n) => Value::Number(n),
-			Self::String(s) => Value::String(s),
-			Self::Array(a) => Value::Array(
-				a.into_iter()
-					.map(|Meta(item, meta)| Meta(item.map_metadata_mut_ref::<N, F>(f), f(meta)))
-					.collect(),
-			),
-			Self::Object(o) => Value::Object(o.map_metadata_mut_ref::<N, F>(f)),
-		}
-	}
-
-	/// Recursively maps the metadata inside the value.
-	pub fn map_metadata<N, F>(self, mut f: F) -> Value<N>
-	where
-		F: FnMut(M) -> N,
-	{
-		self.map_metadata_mut_ref(&mut f)
-	}
-
-	/// Tries to recursively maps the metadata inside the value.
-	fn try_map_metadata_mut_ref<N, E, F>(self, f: &mut F) -> Result<Value<N>, E>
-	where
-		F: FnMut(M) -> Result<N, E>,
-	{
-		match self {
-			Self::Null => Ok(Value::Null),
-			Self::Boolean(b) => Ok(Value::Boolean(b)),
-			Self::Number(n) => Ok(Value::Number(n)),
-			Self::String(s) => Ok(Value::String(s)),
-			Self::Array(a) => {
-				let mut items = Vec::with_capacity(a.len());
-				for item in a {
-					use locspan::TryMapMetadataRecursively;
-					items.push(item.try_map_metadata_recursively_mut_ref::<F>(&mut *f)?)
-				}
-				Ok(Value::Array(items))
-			}
-			Self::Object(o) => Ok(Value::Object(o.try_map_metadata_mut_ref::<N, E, F>(f)?)),
-		}
-	}
-
-	/// Tries to recursively maps the metadata inside the value.
-	pub fn try_map_metadata<N, E, F>(self, mut f: F) -> Result<Value<N>, E>
-	where
-		F: FnMut(M) -> Result<N, E>,
-	{
-		self.try_map_metadata_mut_ref::<N, E, F>(&mut f)
+		self.traverse().filter(|(_, f)| f.is_value()).count()
 	}
 
 	/// Move and return the value, leaves `null` in its place.
@@ -534,7 +464,7 @@ impl<M> Value<M> {
 	}
 }
 
-impl<M: PartialEq> UnorderedPartialEq for Value<M> {
+impl UnorderedPartialEq for Value {
 	fn unordered_eq(&self, other: &Self) -> bool {
 		match (self, other) {
 			(Self::Null, Self::Null) => true,
@@ -548,104 +478,64 @@ impl<M: PartialEq> UnorderedPartialEq for Value<M> {
 	}
 }
 
-impl<M: Eq> UnorderedEq for Value<M> {}
+impl UnorderedEq for Value {}
 
-impl<M> fmt::Display for Value<M> {
+impl fmt::Display for Value {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		self.compact_print().fmt(f)
 	}
 }
 
-impl<M> From<Value<M>> for ::std::string::String {
-	fn from(value: Value<M>) -> Self {
+impl From<Value> for ::std::string::String {
+	fn from(value: Value) -> Self {
 		value.to_string()
 	}
 }
 
-pub trait Traversal<'a> {
-	type Fragment;
-	type Traverse: Iterator<Item = Self::Fragment>;
-
-	fn traverse(&'a self) -> Self::Traverse;
-}
-
-impl<'a, M: 'a> Traversal<'a> for Meta<Value<M>, M> {
-	type Fragment = FragmentRef<'a, M>;
-	type Traverse = Traverse<'a, M>;
-
-	fn traverse(&'a self) -> Self::Traverse {
-		let mut stack = SmallVec::new();
-		stack.push(FragmentRef::Value(self));
-		Traverse { stack }
-	}
-}
-
-impl<M, N> locspan::MapMetadataRecursively<M, N> for Value<M> {
-	type Output = Value<N>;
-
-	fn map_metadata_recursively_mut_ref<F>(self, f: &mut F) -> Value<N>
-	where
-		F: FnMut(M) -> N,
-	{
-		self.map_metadata_mut_ref::<N, F>(f)
-	}
-}
-
-impl<M, N, E> locspan::TryMapMetadataRecursively<M, N, E> for Value<M> {
-	type Output = Value<N>;
-
-	fn try_map_metadata_recursively_mut_ref<F>(self, f: &mut F) -> Result<Value<N>, E>
-	where
-		F: FnMut(M) -> Result<N, E>,
-	{
-		self.try_map_metadata_mut_ref::<N, E, F>(f)
-	}
-}
-
-impl<M> From<bool> for Value<M> {
+impl From<bool> for Value {
 	fn from(b: bool) -> Self {
 		Self::Boolean(b)
 	}
 }
 
-impl<M> From<NumberBuf> for Value<M> {
+impl From<NumberBuf> for Value {
 	fn from(n: NumberBuf) -> Self {
 		Self::Number(n)
 	}
 }
 
-impl<'n, M> From<&'n Number> for Value<M> {
+impl<'n> From<&'n Number> for Value {
 	fn from(n: &'n Number) -> Self {
 		Self::Number(unsafe { NumberBuf::new_unchecked(n.as_bytes().into()) })
 	}
 }
 
-impl<M> From<String> for Value<M> {
+impl From<String> for Value {
 	fn from(s: String) -> Self {
 		Self::String(s)
 	}
 }
 
-impl<M> From<::std::string::String> for Value<M> {
+impl From<::std::string::String> for Value {
 	fn from(s: ::std::string::String) -> Self {
 		Self::String(s.into())
 	}
 }
 
-impl<'s, M> From<&'s str> for Value<M> {
+impl<'s> From<&'s str> for Value {
 	fn from(s: &'s str) -> Self {
 		Self::String(s.into())
 	}
 }
 
-impl<M> From<Array<M>> for Value<M> {
-	fn from(a: Array<M>) -> Self {
+impl From<Array> for Value {
+	fn from(a: Array) -> Self {
 		Self::Array(a)
 	}
 }
 
-impl<M> From<Object<M>> for Value<M> {
-	fn from(o: Object<M>) -> Self {
+impl From<Object> for Value {
+	fn from(o: Object) -> Self {
 		Self::Object(o)
 	}
 }
@@ -653,7 +543,7 @@ impl<M> From<Object<M>> for Value<M> {
 macro_rules! from_integer {
 	($($ty:ident),*) => {
 		$(
-			impl<M> From<$ty> for Value<M> {
+			impl From<$ty> for Value {
 				fn from(n: $ty) -> Self {
 					Value::Number(n.into())
 				}
@@ -676,7 +566,7 @@ from_integer! {
 macro_rules! try_from_float {
 	($($ty:ident),*) => {
 		$(
-			impl<M> TryFrom<$ty> for Value<M> {
+			impl TryFrom<$ty> for Value {
 				type Error = json_number::TryFromFloatError;
 
 				fn try_from(n: $ty) -> Result<Self, Self::Error> {
@@ -692,13 +582,13 @@ try_from_float! {
 	f64
 }
 
-pub enum StrippedFragmentRef<'a, M> {
-	Value(&'a Value<M>),
-	Entry(&'a object::Entry<M>),
+pub enum FragmentRef<'a> {
+	Value(&'a Value),
+	Entry(&'a object::Entry),
 	Key(&'a object::Key),
 }
 
-impl<'a, M> StrippedFragmentRef<'a, M> {
+impl<'a> FragmentRef<'a> {
 	pub fn is_entry(&self) -> bool {
 		matches!(self, Self::Entry(_))
 	}
@@ -730,18 +620,26 @@ impl<'a, M> StrippedFragmentRef<'a, M> {
 	pub fn is_object(&self) -> bool {
 		matches!(self, Self::Value(Value::Object(_)))
 	}
+
+	pub fn strip(self) -> FragmentRef<'a> {
+		match self {
+			Self::Value(v) => FragmentRef::Value(v),
+			Self::Entry(e) => FragmentRef::Entry(e),
+			Self::Key(k) => FragmentRef::Key(k),
+		}
+	}
 }
 
-impl<'a, M> Clone for StrippedFragmentRef<'a, M> {
+impl<'a> Clone for FragmentRef<'a> {
 	fn clone(&self) -> Self {
 		*self
 	}
 }
 
-impl<'a, M> Copy for StrippedFragmentRef<'a, M> {}
+impl<'a> Copy for FragmentRef<'a> {}
 
-impl<'a, M> StrippedFragmentRef<'a, M> {
-	pub fn sub_fragments(&self) -> SubFragments<'a, M> {
+impl<'a> FragmentRef<'a> {
+	pub fn sub_fragments(&self) -> SubFragments<'a> {
 		match self {
 			Self::Value(Value::Array(a)) => SubFragments::Array(a.iter()),
 			Self::Value(Value::Object(o)) => SubFragments::Object(o.iter()),
@@ -751,93 +649,15 @@ impl<'a, M> StrippedFragmentRef<'a, M> {
 	}
 }
 
-pub enum FragmentRef<'a, M> {
-	Value(&'a Meta<Value<M>, M>),
-	Entry(&'a object::Entry<M>),
-	Key(&'a Meta<object::Key, M>),
-}
-
-impl<'a, M> FragmentRef<'a, M> {
-	pub fn is_entry(&self) -> bool {
-		matches!(self, Self::Entry(_))
-	}
-
-	pub fn is_key(&self) -> bool {
-		matches!(self, Self::Key(_))
-	}
-
-	pub fn is_value(&self) -> bool {
-		matches!(self, Self::Value(_))
-	}
-
-	pub fn is_null(&self) -> bool {
-		matches!(self, Self::Value(Meta(Value::Null, _)))
-	}
-
-	pub fn is_number(&self) -> bool {
-		matches!(self, Self::Value(Meta(Value::Number(_), _)))
-	}
-
-	pub fn is_string(&self) -> bool {
-		matches!(self, Self::Value(Meta(Value::String(_), _)))
-	}
-
-	pub fn is_array(&self) -> bool {
-		matches!(self, Self::Value(Meta(Value::Array(_), _)))
-	}
-
-	pub fn is_object(&self) -> bool {
-		matches!(self, Self::Value(Meta(Value::Object(_), _)))
-	}
-
-	pub fn strip(self) -> StrippedFragmentRef<'a, M> {
-		match self {
-			Self::Value(v) => StrippedFragmentRef::Value(v.value()),
-			Self::Entry(e) => StrippedFragmentRef::Entry(e),
-			Self::Key(k) => StrippedFragmentRef::Key(k.value()),
-		}
-	}
-}
-
-impl<'a, M> locspan::Strip for FragmentRef<'a, M> {
-	type Stripped = StrippedFragmentRef<'a, M>;
-
-	fn strip(self) -> Self::Stripped {
-		self.strip()
-	}
-}
-
-impl<'a, M> Clone for FragmentRef<'a, M> {
-	fn clone(&self) -> Self {
-		*self
-	}
-}
-
-impl<'a, M> Copy for FragmentRef<'a, M> {}
-
-impl<'a, M> FragmentRef<'a, M> {
-	pub fn sub_fragments(&self) -> SubFragments<'a, M> {
-		match self {
-			Self::Value(Meta(Value::Array(a), _)) => SubFragments::Array(a.iter()),
-			Self::Value(Meta(Value::Object(o), _)) => SubFragments::Object(o.iter()),
-			Self::Entry(e) => SubFragments::Entry(Some(&e.key), Some(&e.value)),
-			_ => SubFragments::None,
-		}
-	}
-}
-
-pub enum SubFragments<'a, M> {
+pub enum SubFragments<'a> {
 	None,
-	Array(core::slice::Iter<'a, Meta<Value<M>, M>>),
-	Object(core::slice::Iter<'a, object::Entry<M>>),
-	Entry(
-		Option<&'a Meta<object::Key, M>>,
-		Option<&'a Meta<Value<M>, M>>,
-	),
+	Array(core::slice::Iter<'a, Value>),
+	Object(core::slice::Iter<'a, object::Entry>),
+	Entry(Option<&'a object::Key>, Option<&'a Value>),
 }
 
-impl<'a, M> Iterator for SubFragments<'a, M> {
-	type Item = FragmentRef<'a, M>;
+impl<'a> Iterator for SubFragments<'a> {
+	type Item = FragmentRef<'a>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		match self {
@@ -852,36 +672,35 @@ impl<'a, M> Iterator for SubFragments<'a, M> {
 	}
 }
 
-pub struct TraverseStripped<'a, M> {
-	stack: SmallVec<[StrippedFragmentRef<'a, M>; 8]>,
-}
-
-impl<'a, M> Iterator for TraverseStripped<'a, M> {
-	type Item = StrippedFragmentRef<'a, M>;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		match self.stack.pop() {
-			Some(v) => {
-				self.stack.extend(v.sub_fragments().map(FragmentRef::strip));
-				Some(v)
-			}
-			None => None,
+impl<'a> DoubleEndedIterator for SubFragments<'a> {
+	fn next_back(&mut self) -> Option<Self::Item> {
+		match self {
+			Self::None => None,
+			Self::Array(a) => a.next_back().map(FragmentRef::Value),
+			Self::Object(e) => e.next_back().map(FragmentRef::Entry),
+			Self::Entry(k, v) => v
+				.take()
+				.map(FragmentRef::Value)
+				.or_else(|| k.take().map(FragmentRef::Key)),
 		}
 	}
 }
 
-pub struct Traverse<'a, M> {
-	stack: SmallVec<[FragmentRef<'a, M>; 8]>,
+pub struct Traverse<'a> {
+	offset: usize,
+	stack: SmallVec<[FragmentRef<'a>; 8]>,
 }
 
-impl<'a, M> Iterator for Traverse<'a, M> {
-	type Item = FragmentRef<'a, M>;
+impl<'a> Iterator for Traverse<'a> {
+	type Item = (usize, FragmentRef<'a>);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.stack.pop() {
 			Some(v) => {
-				self.stack.extend(v.sub_fragments());
-				Some(v)
+				self.stack.extend(v.sub_fragments().rev());
+				let i = self.offset;
+				self.offset += 1;
+				Some((i, v))
 			}
 			None => None,
 		}
@@ -890,41 +709,10 @@ impl<'a, M> Iterator for Traverse<'a, M> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-
-	#[test]
-	fn map_recursively() {
-		let value: Meta<Value<()>, ()> = json!({
-			"b": 0.00000000001,
-			"c": {
-				"foo": true,
-				"bar": false
-			},
-			"a": [ "foo", "bar" ]
-		});
-
-		value.map_metadata_recursively(|_| ());
-	}
-
-	#[test]
-	fn try_map_recursively() {
-		let value: Meta<Value<()>, ()> = json!({
-			"b": 0.00000000001,
-			"c": {
-				"foo": true,
-				"bar": false
-			},
-			"a": [ "foo", "bar" ]
-		});
-
-		value
-			.try_map_metadata_recursively::<_, std::convert::Infallible, _>(|_| Ok(()))
-			.unwrap();
-	}
-
 	#[cfg(feature = "canonicalize")]
 	#[test]
 	fn canonicalize_01() {
+		use super::*;
 		let mut value: Meta<Value<()>, ()> = json!({
 			"b": 0.00000000001,
 			"c": {
@@ -945,6 +733,7 @@ mod tests {
 	#[cfg(feature = "canonicalize")]
 	#[test]
 	fn canonicalize_02() {
+		use super::*;
 		let mut value = Value::parse_str(
 			"{
 			\"numbers\": [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001],

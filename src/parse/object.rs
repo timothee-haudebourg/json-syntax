@@ -1,110 +1,76 @@
 use super::{Context, Error, Parse, Parser};
 use crate::object::Key;
 use decoded_char::DecodedChar;
-use locspan::{Meta, Span};
-use locspan_derive::*;
+use locspan::Meta;
 
-#[derive(
-	Clone,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Hash,
-	Debug,
-	StrippedPartialEq,
-	StrippedEq,
-	StrippedPartialOrd,
-	StrippedOrd,
-	StrippedHash,
-)]
-#[locspan(ignore(M))]
-pub enum StartFragment<M> {
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub enum StartFragment {
 	Empty,
-	NonEmpty(#[locspan(deref_stripped)] Meta<Key, M>),
+	NonEmpty(Meta<Key, usize>),
 }
 
-impl<M> Parse<M> for StartFragment<M> {
-	fn parse_spanned<C, F, E>(
-		parser: &mut Parser<C, F, E>,
+impl Parse for StartFragment {
+	fn parse_in<C, E>(
+		parser: &mut Parser<C, E>,
 		_context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
+	) -> Result<Meta<Self, usize>, Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
-		F: FnMut(Span) -> M,
 	{
+		let i = parser.begin_fragment();
 		match parser.next_char()? {
-			Some('{') => {
+			(_, Some('{')) => {
 				parser.skip_whitespaces()?;
 
 				match parser.peek_char()? {
 					Some('}') => {
 						parser.next_char()?;
-						Ok(Meta(StartFragment::Empty, parser.position.current_span()))
+						Ok(Meta(StartFragment::Empty, i))
 					}
 					_ => {
-						let span = parser.position.span;
-						parser.position.span.clear();
+						let e = parser.begin_fragment();
 						let key = Key::parse_in(parser, Context::ObjectKey)?;
-						let span = span.union(parser.position.span);
 						parser.skip_whitespaces()?;
 						match parser.next_char()? {
-							Some(':') => Ok(Meta(Self::NonEmpty(key), span)),
-							unexpected => {
-								Err(Meta(Error::unexpected(unexpected), parser.position.last()))
-							}
+							(_, Some(':')) => Ok(Meta(Self::NonEmpty(Meta(key.0, e)), i)),
+							(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 						}
 					}
 				}
 			}
-			unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
+			(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 		}
 	}
 }
 
-#[derive(
-	Clone,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Hash,
-	Debug,
-	StrippedPartialEq,
-	StrippedEq,
-	StrippedPartialOrd,
-	StrippedOrd,
-	StrippedHash,
-)]
-#[locspan(ignore(M))]
-pub enum ContinueFragment<M> {
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub enum ContinueFragment {
 	End,
-	Entry(#[locspan(deref_stripped)] Meta<Key, M>),
+	Entry(Meta<Key, usize>),
 }
 
-impl<M> Parse<M> for ContinueFragment<M> {
-	fn parse_spanned<C, F, E>(
-		parser: &mut Parser<C, F, E>,
-		_context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
+impl ContinueFragment {
+	pub fn parse_in<C, E>(parser: &mut Parser<C, E>, object: usize) -> Result<Self, Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
-		F: FnMut(Span) -> M,
 	{
+		parser.skip_whitespaces()?;
 		match parser.next_char()? {
-			Some(',') => {
-				let span = parser.position.span;
+			(_, Some(',')) => {
 				parser.skip_whitespaces()?;
+				let e = parser.begin_fragment();
 				let key = Key::parse_in(parser, Context::ObjectKey)?;
-				let span = span.union(parser.position.span);
 				parser.skip_whitespaces()?;
 				match parser.next_char()? {
-					Some(':') => Ok(Meta(Self::Entry(key), span)),
-					unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
+					(_, Some(':')) => Ok(Self::Entry(Meta(key.0, e))),
+					(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 				}
 			}
-			Some('}') => Ok(Meta(Self::End, parser.position.current_span())),
-			unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
+			(_, Some('}')) => {
+				parser.end_fragment(object);
+				Ok(Self::End)
+			}
+			(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 		}
 	}
 }

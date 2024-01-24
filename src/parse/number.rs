@@ -1,18 +1,18 @@
 use super::{Context, Error, Parse, Parser};
 use crate::{NumberBuf, SMALL_STRING_CAPACITY};
 use decoded_char::DecodedChar;
-use locspan::{Meta, Span};
+use locspan::Meta;
 use smallvec::SmallVec;
 
-impl<M> Parse<M> for NumberBuf {
-	fn parse_spanned<C, F, E>(
-		parser: &mut Parser<C, F, E>,
+impl Parse for NumberBuf {
+	fn parse_in<C, E>(
+		parser: &mut Parser<C, E>,
 		context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
+	) -> Result<Meta<Self, usize>, Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
-		F: FnMut(Span) -> M,
 	{
+		let i = parser.begin_fragment();
 		let mut buffer: SmallVec<[u8; SMALL_STRING_CAPACITY]> = SmallVec::new();
 
 		enum State {
@@ -35,12 +35,12 @@ impl<M> Parse<M> for NumberBuf {
 					'-' => state = State::FirstDigit,
 					'0' => state = State::Zero,
 					'1'..='9' => state = State::NonZero,
-					_ => return Err(Meta(Error::unexpected(Some(c)), parser.position.last())),
+					_ => return Err(Error::unexpected(parser.position, Some(c))),
 				},
 				State::FirstDigit => match c {
 					'0' => state = State::Zero,
 					'1'..='9' => state = State::NonZero,
-					_ => return Err(Meta(Error::unexpected(Some(c)), parser.position.last())),
+					_ => return Err(Error::unexpected(parser.position, Some(c))),
 				},
 				State::Zero => match c {
 					'.' => state = State::FractionalFirst,
@@ -49,7 +49,7 @@ impl<M> Parse<M> for NumberBuf {
 						if context.follows(c) {
 							break;
 						} else {
-							return Err(Meta(Error::unexpected(Some(c)), parser.position.last()));
+							return Err(Error::unexpected(parser.position, Some(c)));
 						}
 					}
 				},
@@ -61,13 +61,13 @@ impl<M> Parse<M> for NumberBuf {
 						if context.follows(c) {
 							break;
 						} else {
-							return Err(Meta(Error::unexpected(Some(c)), parser.position.last()));
+							return Err(Error::unexpected(parser.position, Some(c)));
 						}
 					}
 				},
 				State::FractionalFirst => match c {
 					'0'..='9' => state = State::FractionalRest,
-					_ => return Err(Meta(Error::unexpected(Some(c)), parser.position.last())),
+					_ => return Err(Error::unexpected(parser.position, Some(c))),
 				},
 				State::FractionalRest => match c {
 					'0'..='9' => state = State::FractionalRest,
@@ -76,18 +76,18 @@ impl<M> Parse<M> for NumberBuf {
 						if context.follows(c) {
 							break;
 						} else {
-							return Err(Meta(Error::unexpected(Some(c)), parser.position.last()));
+							return Err(Error::unexpected(parser.position, Some(c)));
 						}
 					}
 				},
 				State::ExponentSign => match c {
 					'+' | '-' => state = State::ExponentFirst,
 					'0'..='9' => state = State::ExponentRest,
-					_ => return Err(Meta(Error::unexpected(Some(c)), parser.position.last())),
+					_ => return Err(Error::unexpected(parser.position, Some(c))),
 				},
 				State::ExponentFirst => match c {
 					'0'..='9' => state = State::ExponentRest,
-					_ => return Err(Meta(Error::unexpected(Some(c)), parser.position.last())),
+					_ => return Err(Error::unexpected(parser.position, Some(c))),
 				},
 				State::ExponentRest => match c {
 					'0'..='9' => state = State::ExponentRest,
@@ -95,7 +95,7 @@ impl<M> Parse<M> for NumberBuf {
 						if context.follows(c) {
 							break;
 						} else {
-							return Err(Meta(Error::unexpected(Some(c)), parser.position.last()));
+							return Err(Error::unexpected(parser.position, Some(c)));
 						}
 					}
 				},
@@ -110,12 +110,10 @@ impl<M> Parse<M> for NumberBuf {
 			state,
 			State::Zero | State::NonZero | State::FractionalRest | State::ExponentRest
 		) {
-			Ok(Meta(
-				unsafe { NumberBuf::new_unchecked(buffer) },
-				parser.position.current_span(),
-			))
+			parser.end_fragment(i);
+			Ok(Meta(unsafe { NumberBuf::new_unchecked(buffer) }, i))
 		} else {
-			Err(Meta(Error::unexpected(None), parser.position.last()))
+			Err(Error::unexpected(parser.position, None))
 		}
 	}
 }

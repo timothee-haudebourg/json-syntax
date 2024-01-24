@@ -1,9 +1,7 @@
-use crate::{MetaValue, UnorderedEq, UnorderedPartialEq, Value};
+use crate::{FragmentRef, UnorderedEq, UnorderedPartialEq, Value};
 use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{Hash, Hasher};
-use locspan::Meta;
-use locspan_derive::*;
 
 mod index_map;
 
@@ -20,134 +18,61 @@ pub const KEY_CAPACITY: usize = 16;
 pub type Key = smallstr::SmallString<[u8; KEY_CAPACITY]>;
 
 /// Object entry.
-#[derive(
-	Clone,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Hash,
-	Debug,
-	StrippedPartialEq,
-	StrippedEq,
-	StrippedPartialOrd,
-	StrippedOrd,
-	StrippedHash,
-)]
-#[locspan(ignore(M))]
-pub struct Entry<M = ()> {
-	#[locspan(deref_stripped)]
-	pub key: Meta<Key, M>,
-	pub value: MetaValue<M>,
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct Entry {
+	pub key: Key,
+	pub value: Value,
 }
 
-impl<M> Entry<M> {
-	pub fn new(key: Meta<Key, M>, value: MetaValue<M>) -> Self {
+impl Entry {
+	pub fn new(key: Key, value: Value) -> Self {
 		Self { key, value }
 	}
 
-	pub fn as_key(&self) -> &Meta<Key, M> {
-		&self.key
-	}
-
-	pub fn as_value(&self) -> &MetaValue<M> {
-		&self.value
-	}
-
-	pub fn into_key(self) -> Meta<Key, M> {
-		self.key
-	}
-
-	pub fn into_value(self) -> MetaValue<M> {
-		self.value
-	}
-
-	pub fn stripped_key(&self) -> &Key {
-		&self.key
-	}
-
-	pub fn stripped_value(&self) -> &Value<M> {
-		&self.value
-	}
-
-	pub fn into_stripped_key(self) -> Key {
-		self.key.into_value()
-	}
-
-	pub fn into_stripped_value(self) -> Value<M> {
-		self.value.into_value()
-	}
-
-	pub fn key_metadata(&self) -> &M {
-		self.key.metadata()
-	}
-
-	pub fn value_metadata(&self) -> &M {
-		self.value.metadata()
-	}
-
-	pub fn into_key_metadata(self) -> M {
-		self.key.into_metadata()
-	}
-
-	pub fn into_value_metadata(self) -> M {
-		self.value.into_metadata()
-	}
-
-	pub(crate) fn map_metadata_mut_ref<N, F>(self, f: &mut F) -> Entry<N>
-	where
-		F: FnMut(M) -> N,
-	{
-		use locspan::MapMetadataRecursively;
-		Entry {
-			key: self.key.map_metadata(&mut *f),
-			value: self.value.map_metadata_recursively_mut_ref(f),
+	pub fn get_fragment(&self, index: usize) -> Result<FragmentRef, usize> {
+		match index {
+			0 => Ok(FragmentRef::Entry(self)),
+			1 => Ok(FragmentRef::Key(&self.key)),
+			_ => self.value.get_fragment(index - 2),
 		}
 	}
 
-	pub fn map_metadata<N, F>(self, mut f: F) -> Entry<N>
-	where
-		F: FnMut(M) -> N,
-	{
-		self.map_metadata_mut_ref::<N, F>(&mut f)
+	pub fn as_key(&self) -> &Key {
+		&self.key
 	}
 
-	pub(crate) fn try_map_metadata_mut_ref<N, E, F>(self, f: &mut F) -> Result<Entry<N>, E>
-	where
-		F: FnMut(M) -> Result<N, E>,
-	{
-		use locspan::TryMapMetadataRecursively;
-		Ok(Entry {
-			key: self.key.try_map_metadata(&mut *f)?,
-			value: self.value.try_map_metadata_recursively_mut_ref::<F>(f)?,
-		})
+	pub fn as_value(&self) -> &Value {
+		&self.value
 	}
 
-	pub fn try_map_metadata<N, E, F>(self, mut f: F) -> Result<Entry<N>, E>
-	where
-		F: FnMut(M) -> Result<N, E>,
-	{
-		self.try_map_metadata_mut_ref(&mut f)
+	pub fn into_key(self) -> Key {
+		self.key
 	}
 
-	pub fn as_pair(&self) -> (&Meta<Key, M>, &MetaValue<M>) {
+	pub fn into_value(self) -> Value {
+		self.value
+	}
+
+	pub fn as_pair(&self) -> (&Key, &Value) {
 		(&self.key, &self.value)
+	}
+
+	pub fn into_pair(self) -> (Key, Value) {
+		(self.key, self.value)
 	}
 }
 
 /// Object.
-#[derive(Clone, StrippedPartialEq, StrippedEq, StrippedPartialOrd, StrippedOrd, StrippedHash)]
-#[locspan(ignore(M))]
-pub struct Object<M = ()> {
+#[derive(Clone)]
+pub struct Object {
 	/// The entries of the object, in order.
-	entries: Vec<Entry<M>>,
+	entries: Vec<Entry>,
 
-	/// Maps each key to
-	#[locspan(ignore)]
+	/// Maps each key to an entry index.
 	indexes: IndexMap,
 }
 
-impl<M> Default for Object<M> {
+impl Default for Object {
 	fn default() -> Self {
 		Self {
 			entries: Vec::new(),
@@ -156,12 +81,12 @@ impl<M> Default for Object<M> {
 	}
 }
 
-impl<M> Object<M> {
+impl Object {
 	pub fn new() -> Self {
 		Self::default()
 	}
 
-	pub fn from_vec(entries: Vec<Entry<M>>) -> Self {
+	pub fn from_vec(entries: Vec<Entry>) -> Self {
 		let mut indexes = IndexMap::new();
 		for i in 0..entries.len() {
 			indexes.insert(&entries, i);
@@ -182,22 +107,33 @@ impl<M> Object<M> {
 		self.entries.is_empty()
 	}
 
-	pub fn entries(&self) -> &[Entry<M>] {
+	pub fn get_fragment(&self, mut index: usize) -> Result<FragmentRef, usize> {
+		for e in &self.entries {
+			match e.get_fragment(index) {
+				Ok(value) => return Ok(value),
+				Err(i) => index = i,
+			}
+		}
+
+		Err(index)
+	}
+
+	pub fn entries(&self) -> &[Entry] {
 		&self.entries
 	}
 
-	pub fn iter(&self) -> core::slice::Iter<Entry<M>> {
+	pub fn iter(&self) -> core::slice::Iter<Entry> {
 		self.entries.iter()
 	}
 
-	pub fn iter_mut(&mut self) -> IterMut<M> {
+	pub fn iter_mut(&mut self) -> IterMut {
 		IterMut(self.entries.iter_mut())
 	}
 
 	/// Returns an iterator over the values matching the given key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get<Q: ?Sized>(&self, key: &Q) -> Values<M>
+	pub fn get<Q: ?Sized>(&self, key: &Q) -> Values
 	where
 		Q: Hash + Equivalent<Key>,
 	{
@@ -215,7 +151,7 @@ impl<M> Object<M> {
 	/// Returns an iterator over the values matching the given key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get_mut<Q: ?Sized>(&mut self, key: &Q) -> ValuesMut<M>
+	pub fn get_mut<Q: ?Sized>(&mut self, key: &Q) -> ValuesMut
 	where
 		Q: Hash + Equivalent<Key>,
 	{
@@ -235,10 +171,7 @@ impl<M> Object<M> {
 	/// Returns an error if multiple entries match the key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get_unique<Q: ?Sized>(
-		&self,
-		key: &Q,
-	) -> Result<Option<&MetaValue<M>>, Duplicate<&Entry<M>>>
+	pub fn get_unique<Q: ?Sized>(&self, key: &Q) -> Result<Option<&Value>, Duplicate<&Entry>>
 	where
 		Q: Hash + Equivalent<Key>,
 	{
@@ -261,7 +194,7 @@ impl<M> Object<M> {
 	pub fn get_unique_mut<Q: ?Sized>(
 		&mut self,
 		key: &Q,
-	) -> Result<Option<&mut MetaValue<M>>, Duplicate<&Entry<M>>>
+	) -> Result<Option<&mut Value>, Duplicate<&Entry>>
 	where
 		Q: Hash + Equivalent<Key>,
 	{
@@ -286,7 +219,7 @@ impl<M> Object<M> {
 	/// Returns an iterator over the entries matching the given key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get_entries<Q: ?Sized>(&self, key: &Q) -> Entries<M>
+	pub fn get_entries<Q: ?Sized>(&self, key: &Q) -> Entries
 	where
 		Q: Hash + Equivalent<Key>,
 	{
@@ -306,10 +239,7 @@ impl<M> Object<M> {
 	/// Returns an error if multiple entries match the key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get_unique_entry<Q: ?Sized>(
-		&self,
-		key: &Q,
-	) -> Result<Option<&Entry<M>>, Duplicate<&Entry<M>>>
+	pub fn get_unique_entry<Q: ?Sized>(&self, key: &Q) -> Result<Option<&Entry>, Duplicate<&Entry>>
 	where
 		Q: Hash + Equivalent<Key>,
 	{
@@ -327,7 +257,7 @@ impl<M> Object<M> {
 	/// Returns an iterator over the entries matching the given key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get_with_index<Q: ?Sized>(&self, key: &Q) -> ValuesWithIndex<M>
+	pub fn get_with_index<Q: ?Sized>(&self, key: &Q) -> ValuesWithIndex
 	where
 		Q: Hash + Equivalent<Key>,
 	{
@@ -345,7 +275,7 @@ impl<M> Object<M> {
 	/// Returns an iterator over the entries matching the given key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get_entries_with_index<Q: ?Sized>(&self, key: &Q) -> EntriesWithIndex<M>
+	pub fn get_entries_with_index<Q: ?Sized>(&self, key: &Q) -> EntriesWithIndex
 	where
 		Q: Hash + Equivalent<Key>,
 	{
@@ -388,11 +318,11 @@ impl<M> Object<M> {
 			.unwrap_or_default()
 	}
 
-	pub fn first(&self) -> Option<&Entry<M>> {
+	pub fn first(&self) -> Option<&Entry> {
 		self.entries.first()
 	}
 
-	pub fn last(&self) -> Option<&Entry<M>> {
+	pub fn last(&self) -> Option<&Entry> {
 		self.entries.last()
 	}
 
@@ -404,18 +334,18 @@ impl<M> Object<M> {
 	/// are preserved, in order.
 	///
 	/// Runs in `O(1)`.
-	pub fn push(&mut self, key: Meta<Key, M>, value: MetaValue<M>) -> bool {
+	pub fn push(&mut self, key: Key, value: Value) -> bool {
 		self.push_entry(Entry::new(key, value))
 	}
 
-	pub fn push_entry(&mut self, entry: Entry<M>) -> bool {
+	pub fn push_entry(&mut self, entry: Entry) -> bool {
 		let index = self.entries.len();
 		self.entries.push(entry);
 		self.indexes.insert(&self.entries, index)
 	}
 
 	/// Removes the entry at the given index.
-	pub fn remove_at(&mut self, index: usize) -> Option<Entry<M>> {
+	pub fn remove_at(&mut self, index: usize) -> Option<Entry> {
 		if index < self.entries.len() {
 			self.indexes.remove(&self.entries, index);
 			self.indexes.shift(index);
@@ -430,12 +360,8 @@ impl<M> Object<M> {
 	/// If one or more entries are already matching the given key,
 	/// all of them are removed and returned in the resulting iterator.
 	/// Otherwise, `None` is returned.
-	pub fn insert(
-		&mut self,
-		key: Meta<Key, M>,
-		value: MetaValue<M>,
-	) -> Option<RemovedByInsertion<M>> {
-		match self.index_of(key.value()) {
+	pub fn insert(&mut self, key: Key, value: Value) -> Option<RemovedByInsertion> {
+		match self.index_of(&key) {
 			Some(index) => {
 				let mut entry = Entry::new(key, value);
 				core::mem::swap(&mut entry, &mut self.entries[index]);
@@ -455,7 +381,7 @@ impl<M> Object<M> {
 	/// Remove all entries associated to the given key.
 	///
 	/// Runs in `O(n)` time (average).
-	pub fn remove<'q, Q: ?Sized>(&mut self, key: &'q Q) -> RemovedEntries<'_, 'q, M, Q>
+	pub fn remove<'q, Q: ?Sized>(&mut self, key: &'q Q) -> RemovedEntries<'_, 'q, Q>
 	where
 		Q: Hash + Equivalent<Key>,
 	{
@@ -467,10 +393,7 @@ impl<M> Object<M> {
 	/// Returns an error if multiple entries match the key.
 	///
 	/// Runs in `O(n)` time (average).
-	pub fn remove_unique<Q: ?Sized>(
-		&mut self,
-		key: &Q,
-	) -> Result<Option<Entry<M>>, Duplicate<Entry<M>>>
+	pub fn remove_unique<Q: ?Sized>(&mut self, key: &Q) -> Result<Option<Entry>, Duplicate<Entry>>
 	where
 		Q: Hash + Equivalent<Key>,
 	{
@@ -483,55 +406,6 @@ impl<M> Object<M> {
 			},
 			None => Ok(None),
 		}
-	}
-
-	/// Recursively maps the metadata inside the object.
-	pub(crate) fn map_metadata_mut_ref<N, F>(self, f: &mut F) -> Object<N>
-	where
-		F: FnMut(M) -> N,
-	{
-		let entries = self
-			.entries
-			.into_iter()
-			.map(|entry| entry.map_metadata_mut_ref::<N, F>(f))
-			.collect();
-
-		Object {
-			entries,
-			indexes: self.indexes,
-		}
-	}
-
-	/// Recursively maps the metadata inside the object.
-	pub fn map_metadata<N, F>(self, mut f: F) -> Object<N>
-	where
-		F: FnMut(M) -> N,
-	{
-		self.map_metadata_mut_ref::<N, F>(&mut f)
-	}
-
-	/// Tries to recursively maps the metadata inside the object.
-	pub(crate) fn try_map_metadata_mut_ref<N, E, F>(self, f: &mut F) -> Result<Object<N>, E>
-	where
-		F: FnMut(M) -> Result<N, E>,
-	{
-		let mut entries = Vec::with_capacity(self.len());
-		for entry in self.entries {
-			entries.push(entry.try_map_metadata_mut_ref::<N, E, F>(&mut *f)?)
-		}
-
-		Ok(Object {
-			entries,
-			indexes: self.indexes,
-		})
-	}
-
-	/// Tries to recursively maps the metadata inside the object.
-	pub fn try_map_metadata<N, E, F>(self, mut f: F) -> Result<Object<N>, E>
-	where
-		F: FnMut(M) -> Result<N, E>,
-	{
-		self.try_map_metadata_mut_ref(&mut f)
 	}
 
 	/// Sort the entries by key name.
@@ -570,37 +444,34 @@ impl<M> Object<M> {
 	}
 }
 
-pub struct IterMut<'a, M>(std::slice::IterMut<'a, Entry<M>>);
+pub struct IterMut<'a>(std::slice::IterMut<'a, Entry>);
 
-impl<'a, M> Iterator for IterMut<'a, M> {
-	type Item = (&'a Meta<Key, M>, &'a mut MetaValue<M>);
+impl<'a> Iterator for IterMut<'a> {
+	type Item = (&'a Key, &'a mut Value);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		self.0.next().map(|entry| (&entry.key, &mut entry.value))
 	}
 }
 
-impl<M: PartialEq> PartialEq for Object<M> {
+impl PartialEq for Object {
 	fn eq(&self, other: &Self) -> bool {
 		self.entries == other.entries
 	}
 }
 
-impl<M: Eq> Eq for Object<M> {}
+impl Eq for Object {}
 
-impl<M: PartialEq> UnorderedPartialEq for Object<M> {
+impl UnorderedPartialEq for Object {
 	fn unordered_eq(&self, other: &Self) -> bool {
 		if self.entries.len() != other.entries.len() {
 			return false;
 		}
 
 		if !self.iter().all(|Entry { key, value: a }| {
-			other.get_entries(key.value()).any(
-				|Entry {
-				     key: other_key,
-				     value: b,
-				 }| key.metadata() == other_key.metadata() && a.unordered_eq(b),
-			)
+			other
+				.get_entries(key)
+				.any(|Entry { value: b, .. }| a.unordered_eq(b))
 		}) {
 			return false;
 		}
@@ -611,10 +482,8 @@ impl<M: PartialEq> UnorderedPartialEq for Object<M> {
 				     key: other_key,
 				     value: b,
 				 }| {
-					self.get_entries(other_key.value())
-						.any(|Entry { key, value: a }| {
-							key.metadata() == other_key.metadata() && a.unordered_eq(b)
-						})
+					self.get_entries(other_key)
+						.any(|Entry { value: a, .. }| a.unordered_eq(b))
 				},
 			) {
 			return false;
@@ -624,27 +493,27 @@ impl<M: PartialEq> UnorderedPartialEq for Object<M> {
 	}
 }
 
-impl<M: Eq> UnorderedEq for Object<M> {}
+impl UnorderedEq for Object {}
 
-impl<M: PartialOrd> PartialOrd for Object<M> {
+impl PartialOrd for Object {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		self.entries.partial_cmp(&other.entries)
+		Some(self.entries.cmp(&other.entries))
 	}
 }
 
-impl<M: Ord> Ord for Object<M> {
+impl Ord for Object {
 	fn cmp(&self, other: &Self) -> Ordering {
 		self.entries.cmp(&other.entries)
 	}
 }
 
-impl<M: Hash> Hash for Object<M> {
+impl Hash for Object {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.entries.hash(state)
 	}
 }
 
-impl<M: fmt::Debug> fmt::Debug for Object<M> {
+impl fmt::Debug for Object {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		f.debug_map()
 			.entries(self.entries.iter().map(Entry::as_pair))
@@ -652,65 +521,65 @@ impl<M: fmt::Debug> fmt::Debug for Object<M> {
 	}
 }
 
-impl<M> From<Vec<Entry<M>>> for Object<M> {
-	fn from(entries: Vec<Entry<M>>) -> Self {
+impl From<Vec<Entry>> for Object {
+	fn from(entries: Vec<Entry>) -> Self {
 		Self::from_vec(entries)
 	}
 }
 
-impl<'a, M> IntoIterator for &'a Object<M> {
-	type Item = &'a Entry<M>;
-	type IntoIter = core::slice::Iter<'a, Entry<M>>;
+impl<'a> IntoIterator for &'a Object {
+	type Item = &'a Entry;
+	type IntoIter = core::slice::Iter<'a, Entry>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.iter()
 	}
 }
 
-impl<'a, M> IntoIterator for &'a mut Object<M> {
-	type Item = (&'a Meta<Key, M>, &'a mut MetaValue<M>);
-	type IntoIter = IterMut<'a, M>;
+impl<'a> IntoIterator for &'a mut Object {
+	type Item = (&'a Key, &'a mut Value);
+	type IntoIter = IterMut<'a>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.iter_mut()
 	}
 }
 
-impl<M> IntoIterator for Object<M> {
-	type Item = Entry<M>;
-	type IntoIter = std::vec::IntoIter<Entry<M>>;
+impl IntoIterator for Object {
+	type Item = Entry;
+	type IntoIter = std::vec::IntoIter<Entry>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.entries.into_iter()
 	}
 }
 
-impl<M> Extend<Entry<M>> for Object<M> {
-	fn extend<I: IntoIterator<Item = Entry<M>>>(&mut self, iter: I) {
+impl Extend<Entry> for Object {
+	fn extend<I: IntoIterator<Item = Entry>>(&mut self, iter: I) {
 		for entry in iter {
 			self.push_entry(entry);
 		}
 	}
 }
 
-impl<M> FromIterator<Entry<M>> for Object<M> {
-	fn from_iter<I: IntoIterator<Item = Entry<M>>>(iter: I) -> Self {
+impl FromIterator<Entry> for Object {
+	fn from_iter<I: IntoIterator<Item = Entry>>(iter: I) -> Self {
 		let mut object = Object::default();
 		object.extend(iter);
 		object
 	}
 }
 
-impl<M> Extend<(Meta<Key, M>, MetaValue<M>)> for Object<M> {
-	fn extend<I: IntoIterator<Item = (Meta<Key, M>, MetaValue<M>)>>(&mut self, iter: I) {
+impl Extend<(Key, Value)> for Object {
+	fn extend<I: IntoIterator<Item = (Key, Value)>>(&mut self, iter: I) {
 		for (key, value) in iter {
 			self.push(key, value);
 		}
 	}
 }
 
-impl<M> FromIterator<(Meta<Key, M>, MetaValue<M>)> for Object<M> {
-	fn from_iter<I: IntoIterator<Item = (Meta<Key, M>, MetaValue<M>)>>(iter: I) -> Self {
+impl FromIterator<(Key, Value)> for Object {
+	fn from_iter<I: IntoIterator<Item = (Key, Value)>>(iter: I) -> Self {
 		let mut object = Object::default();
 		object.extend(iter);
 		object
@@ -752,12 +621,12 @@ macro_rules! entries_iter {
 		fn next(&mut $self:ident, $index:ident) { $e:expr }
 	})*) => {
 		$(
-			pub struct $id<$lft, M> {
+			pub struct $id<$lft> {
 				indexes: Indexes<$lft>,
-				object: &$lft Object<M>
+				object: &$lft Object
 			}
 
-			impl<$lft, M> Iterator for $id<$lft, M> {
+			impl<$lft> Iterator for $id<$lft> {
 				type Item = $item;
 
 				fn next(&mut $self) -> Option<Self::Item> {
@@ -770,25 +639,25 @@ macro_rules! entries_iter {
 
 entries_iter! {
 	Values<'a> {
-		type Item = &'a MetaValue<M>;
+		type Item = &'a Value;
 
 		fn next(&mut self, index) { &self.object.entries[index].value }
 	}
 
 	ValuesWithIndex<'a> {
-		type Item = (usize, &'a MetaValue<M>);
+		type Item = (usize, &'a Value);
 
 		fn next(&mut self, index) { (index, &self.object.entries[index].value) }
 	}
 
 	Entries<'a> {
-		type Item = &'a Entry<M>;
+		type Item = &'a Entry;
 
 		fn next(&mut self, index) { &self.object.entries[index] }
 	}
 
 	EntriesWithIndex<'a> {
-		type Item = (usize, &'a Entry<M>);
+		type Item = (usize, &'a Entry);
 
 		fn next(&mut self, index) { (index, &self.object.entries[index]) }
 	}
@@ -801,12 +670,12 @@ macro_rules! entries_iter_mut {
 		fn next(&mut $self:ident, $index:ident) { $e:expr }
 	})*) => {
 		$(
-			pub struct $id<$lft, M> {
+			pub struct $id<$lft> {
 				indexes: Indexes<$lft>,
-				entries: &$lft mut [Entry<M>]
+				entries: &$lft mut [Entry]
 			}
 
-			impl<$lft, M> Iterator for $id<$lft, M> {
+			impl<$lft> Iterator for $id<$lft> {
 				type Item = $item;
 
 				fn next(&mut $self) -> Option<Self::Item> {
@@ -819,7 +688,7 @@ macro_rules! entries_iter_mut {
 
 entries_iter_mut! {
 	ValuesMut<'a> {
-		type Item = &'a mut MetaValue<M>;
+		type Item = &'a mut Value;
 
 		fn next(&mut self, index) {
 			// This is safe because there is no aliasing between the values.
@@ -828,7 +697,7 @@ entries_iter_mut! {
 	}
 
 	ValuesMutWithIndex<'a> {
-		type Item = (usize, &'a mut MetaValue<M>);
+		type Item = (usize, &'a mut Value);
 
 		fn next(&mut self, index) {
 			// This is safe because there is no aliasing between the values.
@@ -837,20 +706,20 @@ entries_iter_mut! {
 	}
 }
 
-pub struct RemovedByInsertion<'a, M> {
+pub struct RemovedByInsertion<'a> {
 	index: usize,
-	first: Option<Entry<M>>,
-	object: &'a mut Object<M>,
+	first: Option<Entry>,
+	object: &'a mut Object,
 }
 
-impl<'a, M> Iterator for RemovedByInsertion<'a, M> {
-	type Item = Entry<M>;
+impl<'a> Iterator for RemovedByInsertion<'a> {
+	type Item = Entry;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.first.take() {
 			Some(entry) => Some(entry),
 			None => {
-				let key = self.object.entries[self.index].key.value();
+				let key = &self.object.entries[self.index].key;
 				self.object
 					.redundant_index_of(key)
 					.and_then(|index| self.object.remove_at(index))
@@ -859,25 +728,25 @@ impl<'a, M> Iterator for RemovedByInsertion<'a, M> {
 	}
 }
 
-impl<'a, M> Drop for RemovedByInsertion<'a, M> {
+impl<'a> Drop for RemovedByInsertion<'a> {
 	fn drop(&mut self) {
 		self.last();
 	}
 }
 
-pub struct RemovedEntries<'a, 'q, M, Q: ?Sized>
+pub struct RemovedEntries<'a, 'q, Q: ?Sized>
 where
 	Q: Hash + Equivalent<Key>,
 {
 	key: &'q Q,
-	object: &'a mut Object<M>,
+	object: &'a mut Object,
 }
 
-impl<'a, 'q, M, Q: ?Sized> Iterator for RemovedEntries<'a, 'q, M, Q>
+impl<'a, 'q, Q: ?Sized> Iterator for RemovedEntries<'a, 'q, Q>
 where
 	Q: Hash + Equivalent<Key>,
 {
-	type Item = Entry<M>;
+	type Item = Entry;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		self.object
@@ -886,7 +755,7 @@ where
 	}
 }
 
-impl<'a, 'q, M, Q: ?Sized> Drop for RemovedEntries<'a, 'q, M, Q>
+impl<'a, 'q, Q: ?Sized> Drop for RemovedEntries<'a, 'q, Q>
 where
 	Q: Hash + Equivalent<Key>,
 {
@@ -907,7 +776,7 @@ mod tests {
 	#[test]
 	fn remove() {
 		let mut object = Object::new();
-		object.insert(Meta("a".into(), ()), Meta(Value::Null, ()));
+		object.insert("a".into(), Value::Null);
 
 		object.remove("a");
 		object.remove("a");
@@ -916,56 +785,28 @@ mod tests {
 	#[test]
 	fn unordered_eq1() {
 		let mut a = Object::new();
-		a.push(Meta("a".into(), ()), Meta(Value::Null, ()));
-		a.push(Meta("b".into(), ()), Meta(Value::Null, ()));
+		a.push("a".into(), Value::Null);
+		a.push("b".into(), Value::Null);
 
 		let mut b = Object::new();
-		b.push(Meta("b".into(), ()), Meta(Value::Null, ()));
-		b.push(Meta("a".into(), ()), Meta(Value::Null, ()));
+		b.push("b".into(), Value::Null);
+		b.push("a".into(), Value::Null);
 
 		assert_ne!(a, b);
-		assert_eq!(a.unordered(), b.unordered())
+		assert_eq!(a.as_unordered(), b.as_unordered())
 	}
 
 	#[test]
 	fn unordered_eq2() {
 		let mut a = Object::new();
-		a.push(Meta("a".into(), ()), Meta(Value::Null, ()));
-		a.push(Meta("a".into(), ()), Meta(Value::Null, ()));
+		a.push("a".into(), Value::Null);
+		a.push("a".into(), Value::Null);
 
 		let mut b = Object::new();
-		b.push(Meta("a".into(), ()), Meta(Value::Null, ()));
-		b.push(Meta("a".into(), ()), Meta(Value::Null, ()));
+		b.push("a".into(), Value::Null);
+		b.push("a".into(), Value::Null);
 
 		assert_eq!(a, b);
-		assert_eq!(a.unordered(), b.unordered())
-	}
-
-	#[test]
-	fn unordered_eq3() {
-		let mut a = Object::new();
-		a.push(Meta("a".into(), 0), Meta(Value::Null, 0));
-		a.push(Meta("a".into(), 1), Meta(Value::Null, 0));
-
-		let mut b = Object::new();
-		b.push(Meta("a".into(), 1), Meta(Value::Null, 0));
-		b.push(Meta("a".into(), 0), Meta(Value::Null, 0));
-
-		assert_ne!(a, b);
-		assert_eq!(a.unordered(), b.unordered())
-	}
-
-	#[test]
-	fn unordered_eq4() {
-		let mut a = Object::new();
-		a.push(Meta("a".into(), 0), Meta(Value::Null, 1));
-		a.push(Meta("a".into(), 0), Meta(Value::Null, 0));
-
-		let mut b = Object::new();
-		b.push(Meta("a".into(), 0), Meta(Value::Null, 0));
-		b.push(Meta("a".into(), 0), Meta(Value::Null, 1));
-
-		assert_ne!(a, b);
-		assert_eq!(a.unordered(), b.unordered())
+		assert_eq!(a.as_unordered(), b.as_unordered())
 	}
 }

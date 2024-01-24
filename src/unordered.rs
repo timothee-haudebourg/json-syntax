@@ -6,14 +6,14 @@ use locspan::Meta;
 /// the objects entries.
 #[derive(Debug)]
 #[repr(transparent)]
-pub struct Unordered<T: ?Sized>(T);
+pub struct Unordered<T: ?Sized>(pub T);
 
 pub trait BorrowUnordered {
-	fn unordered(&self) -> &Unordered<Self>;
+	fn as_unordered(&self) -> &Unordered<Self>;
 }
 
 impl<T> BorrowUnordered for T {
-	fn unordered(&self) -> &Unordered<Self> {
+	fn as_unordered(&self) -> &Unordered<Self> {
 		unsafe { core::mem::transmute(self) }
 	}
 }
@@ -25,6 +25,12 @@ pub trait UnorderedPartialEq {
 impl<T: UnorderedPartialEq, M: PartialEq> UnorderedPartialEq for Meta<T, M> {
 	fn unordered_eq(&self, other: &Self) -> bool {
 		self.metadata() == other.metadata() && self.value().unordered_eq(other.value())
+	}
+}
+
+impl<T: UnorderedPartialEq> UnorderedPartialEq for Vec<T> {
+	fn unordered_eq(&self, other: &Self) -> bool {
+		self.len() == other.len() && self.iter().zip(other).all(|(a, b)| a.unordered_eq(b))
 	}
 }
 

@@ -11,7 +11,7 @@ fn test<P: Clone + AsRef<Path> + Debug>(filename: P, options: Options) {
 		std::borrow::Cow::Borrowed(std::str::from_utf8(&buffer).unwrap())
 	};
 
-	Value::parse_str_with(&input, options, |span| span).expect("parse error");
+	Value::parse_str_with(&input, options).expect("parse error");
 }
 
 #[test]

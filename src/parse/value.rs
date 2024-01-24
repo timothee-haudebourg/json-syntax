@@ -1,60 +1,60 @@
-use super::{array, object, Context, Error, Parse, Parser, ValueOrParse};
+use super::{array, object, Context, Error, Parse, Parser};
 use crate::{object::Key, Array, NumberBuf, Object, String, Value};
 use decoded_char::DecodedChar;
-use locspan::{Meta, Span};
-use locspan_derive::*;
+use locspan::Meta;
 
 /// Value fragment.
-#[derive(
-	Clone,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Hash,
-	Debug,
-	StrippedPartialEq,
-	StrippedEq,
-	StrippedPartialOrd,
-	StrippedOrd,
-	StrippedHash,
-)]
-#[locspan(ignore(F))]
-pub enum Fragment<M> {
-	Value(Value<M>),
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub enum Fragment {
+	Value(Value),
 	BeginArray,
-	BeginObject(#[locspan(deref_stripped)] Meta<Key, M>),
+	BeginObject(Meta<Key, usize>),
 }
 
-impl<M> From<Value<M>> for Fragment<M> {
-	fn from(v: Value<M>) -> Self {
+impl Fragment {
+	fn value_or_parse<C, E>(
+		value: Option<Meta<Value, usize>>,
+		parser: &mut Parser<C, E>,
+		context: Context,
+	) -> Result<Meta<Self, usize>, Error<E>>
+	where
+		C: Iterator<Item = Result<DecodedChar, E>>,
+	{
+		match value {
+			Some(value) => Ok(value.cast()),
+			None => Self::parse_in(parser, context),
+		}
+	}
+}
+
+impl From<Value> for Fragment {
+	fn from(v: Value) -> Self {
 		Self::Value(v)
 	}
 }
 
-impl<M> Parse<M> for Fragment<M> {
-	fn parse_spanned<C, F, E>(
-		parser: &mut Parser<C, F, E>,
+impl Parse for Fragment {
+	fn parse_in<C, E>(
+		parser: &mut Parser<C, E>,
 		context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
+	) -> Result<Meta<Self, usize>, Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
-		F: FnMut(Span) -> M,
 	{
 		parser.skip_whitespaces()?;
 
 		let value = match parser.peek_char()? {
-			Some('n') => <()>::parse_spanned(parser, context)?.map(|()| Value::Null),
-			Some('t' | 'f') => bool::parse_spanned(parser, context)?.map(Value::Boolean),
-			Some('0'..='9' | '-') => NumberBuf::parse_spanned(parser, context)?.map(Value::Number),
-			Some('"') => String::parse_spanned(parser, context)?.map(Value::String),
-			Some('[') => match array::StartFragment::parse_spanned(parser, context)? {
+			Some('n') => <()>::parse_in(parser, context)?.map(|()| Value::Null),
+			Some('t' | 'f') => bool::parse_in(parser, context)?.map(Value::Boolean),
+			Some('0'..='9' | '-') => NumberBuf::parse_in(parser, context)?.map(Value::Number),
+			Some('"') => String::parse_in(parser, context)?.map(Value::String),
+			Some('[') => match array::StartFragment::parse_in(parser, context)? {
 				Meta(array::StartFragment::Empty, span) => Meta(Value::Array(Array::new()), span),
 				Meta(array::StartFragment::NonEmpty, span) => {
 					return Ok(Meta(Self::BeginArray, span))
 				}
 			},
-			Some('{') => match object::StartFragment::parse_spanned(parser, context)? {
+			Some('{') => match object::StartFragment::parse_in(parser, context)? {
 				Meta(object::StartFragment::Empty, span) => {
 					Meta(Value::Object(Object::new()), span)
 				}
@@ -62,39 +62,36 @@ impl<M> Parse<M> for Fragment<M> {
 					return Ok(Meta(Self::BeginObject(key), span))
 				}
 			},
-			unexpected => return Err(Meta(Error::unexpected(unexpected), parser.position.last())),
+			unexpected => return Err(Error::unexpected(parser.position, unexpected)),
 		};
-
-		parser.skip_trailing_whitespaces(context)?;
 
 		Ok(value.map(Self::Value))
 	}
 }
 
-impl<M> Parse<M> for Value<M> {
-	fn parse_spanned<C, F, E>(
-		parser: &mut Parser<C, F, E>,
+impl Parse for Value {
+	fn parse_in<C, E>(
+		parser: &mut Parser<C, E>,
 		context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
+	) -> Result<Meta<Self, usize>, Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
-		F: FnMut(Span) -> M,
 	{
-		enum Item<M> {
-			Array(Meta<Array<M>, Span>),
-			ArrayItem(Meta<Array<M>, Span>),
-			Object(Meta<Object<M>, Span>),
-			ObjectEntry(Meta<Object<M>, Span>, Meta<Key, M>),
+		enum StackItem {
+			Array(Meta<Array, usize>),
+			ArrayItem(Meta<Array, usize>),
+			Object(Meta<Object, usize>),
+			ObjectEntry(Meta<Object, usize>, Meta<Key, usize>),
 		}
 
-		let mut stack: Vec<Item<M>> = vec![];
-		let mut value: Option<Meta<Value<M>, Span>> = None;
+		let mut stack: Vec<StackItem> = vec![];
+		let mut value: Option<Meta<Value, usize>> = None;
 
-		fn stack_context<M>(stack: &[Item<M>], root: Context) -> Context {
+		fn stack_context(stack: &[StackItem], root: Context) -> Context {
 			match stack.last() {
-				Some(Item::Array(_) | Item::ArrayItem(_)) => Context::Array,
-				Some(Item::Object(_)) => Context::ObjectKey,
-				Some(Item::ObjectEntry(_, _)) => Context::ObjectValue,
+				Some(StackItem::Array(_) | StackItem::ArrayItem(_)) => Context::Array,
+				Some(StackItem::Object(_)) => Context::ObjectKey,
+				Some(StackItem::ObjectEntry(_, _)) => Context::ObjectValue,
 				None => root,
 			}
 		}
@@ -106,79 +103,68 @@ impl<M> Parse<M> for Value<M> {
 					parser,
 					stack_context(&stack, context),
 				)? {
-					Meta(Fragment::Value(value), span) => break Ok(Meta(value, span)),
-					Meta(Fragment::BeginArray, span) => {
-						stack.push(Item::ArrayItem(Meta(Array::new(), span)))
+					Meta(Fragment::Value(value), i) => {
+						parser.skip_whitespaces()?;
+						break match parser.next_char()? {
+							(p, Some(c)) => Err(Error::unexpected(p, Some(c))),
+							(_, None) => Ok(Meta(value, i)),
+						};
 					}
-					Meta(Fragment::BeginObject(key), span) => {
-						stack.push(Item::ObjectEntry(Meta(Object::new(), span), key))
+					Meta(Fragment::BeginArray, i) => {
+						stack.push(StackItem::ArrayItem(Meta(Array::new(), i)))
+					}
+					Meta(Fragment::BeginObject(key), i) => {
+						stack.push(StackItem::ObjectEntry(Meta(Object::new(), i), key))
 					}
 				},
-				Some(Item::Array(Meta(array, span))) => {
-					match array::ContinueFragment::parse_spanned(
-						parser,
-						stack_context(&stack, context),
-					)? {
-						Meta(array::ContinueFragment::Item, comma_span) => {
-							stack.push(Item::ArrayItem(Meta(array, span.union(comma_span))))
+				Some(StackItem::Array(Meta(array, i))) => {
+					match array::ContinueFragment::parse_in(parser, i)? {
+						array::ContinueFragment::Item => {
+							stack.push(StackItem::ArrayItem(Meta(array, i)))
 						}
-						Meta(array::ContinueFragment::End, closing_span) => {
-							parser.skip_trailing_whitespaces(stack_context(&stack, context))?;
-							value = Some(Meta(Value::Array(array), span.union(closing_span)))
-						}
+						array::ContinueFragment::End => value = Some(Meta(Value::Array(array), i)),
 					}
 				}
-				Some(Item::ArrayItem(Meta(mut array, span))) => {
+				Some(StackItem::ArrayItem(Meta(mut array, i))) => {
 					match Fragment::value_or_parse(value.take(), parser, Context::Array)? {
-						Meta(Fragment::Value(value), value_span) => {
-							array.push(Meta(value, parser.position.metadata_at(value_span)));
-							stack.push(Item::Array(Meta(array, span.union(value_span))));
+						Meta(Fragment::Value(value), _) => {
+							array.push(value);
+							stack.push(StackItem::Array(Meta(array, i)));
 						}
-						Meta(Fragment::BeginArray, value_span) => {
-							stack.push(Item::ArrayItem(Meta(array, span.union(value_span))));
-							stack.push(Item::ArrayItem(Meta(Array::new(), value_span)))
+						Meta(Fragment::BeginArray, j) => {
+							stack.push(StackItem::ArrayItem(Meta(array, i)));
+							stack.push(StackItem::ArrayItem(Meta(Array::new(), j)))
 						}
-						Meta(Fragment::BeginObject(value_key), value_span) => {
-							stack.push(Item::ArrayItem(Meta(array, span.union(value_span))));
-							stack.push(Item::ObjectEntry(
-								Meta(Object::new(), value_span),
-								value_key,
-							))
+						Meta(Fragment::BeginObject(value_key), j) => {
+							stack.push(StackItem::ArrayItem(Meta(array, i)));
+							stack.push(StackItem::ObjectEntry(Meta(Object::new(), j), value_key))
 						}
 					}
 				}
-				Some(Item::Object(Meta(object, span))) => {
-					match object::ContinueFragment::parse_spanned(
-						parser,
-						stack_context(&stack, context),
-					)? {
-						Meta(object::ContinueFragment::Entry(key), comma_key_span) => stack.push(
-							Item::ObjectEntry(Meta(object, span.union(comma_key_span)), key),
-						),
-						Meta(object::ContinueFragment::End, closing_span) => {
-							parser.skip_trailing_whitespaces(stack_context(&stack, context))?;
-							value = Some(Meta(Value::Object(object), span.union(closing_span)))
+				Some(StackItem::Object(Meta(object, i))) => {
+					match object::ContinueFragment::parse_in(parser, i)? {
+						object::ContinueFragment::Entry(key) => {
+							stack.push(StackItem::ObjectEntry(Meta(object, i), key))
+						}
+						object::ContinueFragment::End => {
+							value = Some(Meta(Value::Object(object), i))
 						}
 					}
 				}
-				Some(Item::ObjectEntry(Meta(mut object, span), key)) => {
+				Some(StackItem::ObjectEntry(Meta(mut object, i), Meta(key, e))) => {
 					match Fragment::value_or_parse(value.take(), parser, Context::ObjectValue)? {
-						Meta(Fragment::Value(value), value_span) => {
-							object.push(key, Meta(value, parser.position.metadata_at(value_span)));
-							stack.push(Item::Object(Meta(object, span.union(value_span))));
+						Meta(Fragment::Value(value), _) => {
+							parser.end_fragment(e);
+							object.push(key, value);
+							stack.push(StackItem::Object(Meta(object, i)));
 						}
-						Meta(Fragment::BeginArray, value_span) => {
-							stack
-								.push(Item::ObjectEntry(Meta(object, span.union(value_span)), key));
-							stack.push(Item::ArrayItem(Meta(Array::new(), value_span)))
+						Meta(Fragment::BeginArray, j) => {
+							stack.push(StackItem::ObjectEntry(Meta(object, i), Meta(key, e)));
+							stack.push(StackItem::ArrayItem(Meta(Array::new(), j)))
 						}
-						Meta(Fragment::BeginObject(value_key), value_span) => {
-							stack
-								.push(Item::ObjectEntry(Meta(object, span.union(value_span)), key));
-							stack.push(Item::ObjectEntry(
-								Meta(Object::new(), value_span),
-								value_key,
-							))
+						Meta(Fragment::BeginObject(value_key), j) => {
+							stack.push(StackItem::ObjectEntry(Meta(object, i), Meta(key, e)));
+							stack.push(StackItem::ObjectEntry(Meta(Object::new(), j), value_key))
 						}
 					}
 				}

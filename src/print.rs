@@ -598,7 +598,7 @@ where
 	f.write_str("}")
 }
 
-impl<M> PrintWithSize for crate::Object<M> {
+impl PrintWithSize for crate::Object {
 	#[inline(always)]
 	fn fmt_with_size(
 		&self,
@@ -634,7 +634,7 @@ impl PrecomputeSize for bool {
 	}
 }
 
-impl<M> PrecomputeSize for crate::Value<M> {
+impl PrecomputeSize for crate::Value {
 	fn pre_compute_size(&self, options: &Options, sizes: &mut Vec<Size>) -> Size {
 		match self {
 			crate::Value::Null => Size::Width(4),
@@ -788,7 +788,7 @@ where
 	size
 }
 
-impl<M> Print for crate::Value<M> {
+impl Print for crate::Value {
 	fn fmt_with(&self, f: &mut fmt::Formatter, options: &Options, indent: usize) -> fmt::Result {
 		match self {
 			Self::Null => f.write_str("null"),
@@ -796,13 +796,15 @@ impl<M> Print for crate::Value<M> {
 			Self::Number(n) => n.fmt_with(f, options, indent),
 			Self::String(s) => s.fmt_with(f, options, indent),
 			Self::Array(a) => {
-				let mut sizes = Vec::with_capacity(self.count(|v| v.is_array() || v.is_object()));
+				let mut sizes =
+					Vec::with_capacity(self.count(|_, v| v.is_array() || v.is_object()));
 				self.pre_compute_size(options, &mut sizes);
 				let mut index = 0;
 				a.fmt_with_size(f, options, indent, &sizes, &mut index)
 			}
 			Self::Object(o) => {
-				let mut sizes = Vec::with_capacity(self.count(|v| v.is_array() || v.is_object()));
+				let mut sizes =
+					Vec::with_capacity(self.count(|_, v| v.is_array() || v.is_object()));
 				self.pre_compute_size(options, &mut sizes);
 				let mut index = 0;
 				o.fmt_with_size(f, options, indent, &sizes, &mut index)
@@ -811,7 +813,7 @@ impl<M> Print for crate::Value<M> {
 	}
 }
 
-impl<M> PrintWithSize for crate::Value<M> {
+impl PrintWithSize for crate::Value {
 	fn fmt_with_size(
 		&self,
 		f: &mut fmt::Formatter,

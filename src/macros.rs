@@ -1,9 +1,8 @@
-/// Constructs a `Loc<json_syntax::Value, (), ()>` from a JSON literal.
+/// Constructs a `json_syntax::Value` from a JSON literal.
 ///
 /// ```
 /// # use json_syntax::{Value, json};
-/// # use locspan::Meta;
-/// let value: Meta<Value, ()> = json!({
+/// let value = json!({
 ///     "code": 200,
 ///     "success": true,
 ///     "payload": {
@@ -19,15 +18,14 @@
 ///
 /// ```
 /// # use json_syntax::{Value, object::Key, json};
-/// # use locspan::Meta;
 /// let code = 200;
 /// let features = vec!["json", "syntax"];
 ///
-/// let value: Meta<Value, ()> = json!({
-///     "code": Meta(Value::from(code), ()),
-///     "success": Meta(Value::from(code == 200), ()),
+/// let value = json!({
+///     "code": Value::from(code),
+///     "success": Value::from(code == 200),
 ///     "payload": {
-///         Meta(Key::from(features[0]), ()): Meta(Value::from(features[1]), ())
+///         Key::from(features[0]): Value::from(features[1])
 ///     }
 /// });
 /// ```
@@ -36,30 +34,12 @@
 ///
 /// ```
 /// # use json_syntax::{Value, json};
-/// # use locspan::Meta;
-/// let value: Meta<Value<()>, ()> = json!([
+/// let value = json!([
 ///     "notice",
 ///     "the",
 ///     "trailing",
 ///     "comma -->",
 /// ]);
-/// ```
-///
-/// Metadata information can be added using the `@` symbol.
-///
-/// ```
-/// # use json_syntax::{Value, json};
-/// # use locspan::Meta;
-/// let value: Meta<Value<u8>, u8> = json!({
-///     ("code" @ 0): 200 @ 1,
-///     ("success" @ 2): true @ 3,
-///     ("payload" @ 4): {
-///         ("features" @ 5): [
-///             "json" @ 6,
-///             "syntax" @ 7
-///         ] @ 8
-///     } @ 9
-/// } @ 10);
 /// ```
 #[macro_export(local_inner_macros)]
 macro_rules! json {
@@ -80,19 +60,9 @@ macro_rules! json {
 		json_vec![$($elems),*]
 	};
 
-	// Next element is `null` with metadata.
-	(@array [$($elems:expr,)*] null @ $meta:expr $(,$($rest:tt)*)?) => {
-		json!(@array [$($elems,)* json!(null @ $meta)] $(,$($rest)*)?)
-	};
-
 	// Next element is `null`.
 	(@array [$($elems:expr,)*] null $($rest:tt)*) => {
 		json!(@array [$($elems,)* json!(null)] $($rest)*)
-	};
-
-	// Next element is `true` with metadata.
-	(@array [$($elems:expr,)*] true @ $meta:expr $(,$($rest:tt)*)?) => {
-		json!(@array [$($elems,)* json!(true @ $meta)] $(,$($rest)*)?)
 	};
 
 	// Next element is `true`.
@@ -100,19 +70,9 @@ macro_rules! json {
 		json!(@array [$($elems,)* json!(true)] $($rest)*)
 	};
 
-	// Next element is `false` with metadata.
-	(@array [$($elems:expr,)*] false @ $meta:expr $(,$($rest:tt)*)?) => {
-		json!(@array [$($elems,)* json!(false @ $meta)] $(,$($rest)*)?)
-	};
-
 	// Next element is `false`.
 	(@array [$($elems:expr,)*] false $($rest:tt)*) => {
 		json!(@array [$($elems,)* json!(false)] $($rest)*)
-	};
-
-	// Next element is a literal with metadata.
-	(@array [$($elems:expr,)*] $lit:literal @ $meta:expr $(,$($rest:tt)*)?) => {
-		json!(@array [$($elems,)* json!($lit @ $meta)] $(,$($rest)*)?)
 	};
 
 	// Next element is a literal.
@@ -120,19 +80,9 @@ macro_rules! json {
 		json!(@array [$($elems,)* json!($lit)] $($rest)*)
 	};
 
-	// Next element is an array with metadata.
-	(@array [$($elems:expr,)*] [$($array:tt)*] @ $meta:expr $(,$($rest:tt)*)?) => {
-		json!(@array [$($elems,)* json!([$($array)*] @ $meta)] $(,$($rest)*)?)
-	};
-
 	// Next element is an array.
 	(@array [$($elems:expr,)*] [$($array:tt)*] $($rest:tt)*) => {
 		json!(@array [$($elems,)* json!([$($array)*])] $($rest)*)
-	};
-
-	// Next element is a map with metadata.
-	(@array [$($elems:expr,)*] {$($map:tt)*} @ $meta:expr $(,$($rest:tt)*)?) => {
-		json!(@array [$($elems,)* json!({$($map)*} @ $meta)] $(,$($rest)*)?)
 	};
 
 	// Next element is a map.
@@ -179,14 +129,9 @@ macro_rules! json {
 		$crate::Object::from_vec(json_vec![$($elems),*])
 	};
 
-	// Create an entry literal key with metadata.
-	(@key (($key:literal @ $meta:expr))) => {
-		::locspan::Meta($key.into(), $meta)
-	};
-
 	// Create an entry literal key.
 	(@key ($key:literal)) => {
-		::locspan::Meta($key.into(), ())
+		$key.into()
 	};
 
 	// Create an entry key.
@@ -194,19 +139,9 @@ macro_rules! json {
 		$key.into()
 	};
 
-	// Next value is `null` with metadata.
-	(@object [$($elems:expr,)*] ($($key:tt)+) (: null @ $meta:expr $(,$($rest:tt)*)?) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(null @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
-	};
-
 	// Next value is `null`.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: null $($rest:tt)*) $copy:tt) => {
 		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(null))] () ($($rest)*) ($($rest)*))
-	};
-
-	// Next value is `true` with metadata.
-	(@object [$($elems:expr,)*] ($($key:tt)+) (: true @ $meta:expr $(,$($rest:tt)*)?) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(true @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
 	};
 
 	// Next value is `true`.
@@ -214,19 +149,9 @@ macro_rules! json {
 		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(true))] () ($($rest)*) ($($rest)*))
 	};
 
-	// Next value is `false` with metadata.
-	(@object [$($elems:expr,)*] ($($key:tt)+) (: false @ $meta:expr $(,$($rest:tt)*)?) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(false @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
-	};
-
 	// Next value is `false`.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: false $($rest:tt)*) $copy:tt) => {
 		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(false))] () ($($rest)*) ($($rest)*))
-	};
-
-	// Next value is a literal with metadata.
-	(@object [$($elems:expr,)*] ($($key:tt)+) (: $lit:literal @ $meta:expr $(,$($rest:tt)*)?) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!($lit @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
 	};
 
 	// Next value is a literal.
@@ -234,19 +159,9 @@ macro_rules! json {
 		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!($lit))] () ($($rest)*) ($($rest)*))
 	};
 
-	// Next value is a array with metadata.
-	(@object [$($elems:expr,)*] ($($key:tt)+) (: [$($array:tt)*] @ $meta:expr $(,$($rest:tt)*)?) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!([$($array)*] @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
-	};
-
 	// Next value is a array.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: [$($array:tt)*] $($rest:tt)*) $copy:tt) => {
 		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!([$($array)*]))] () ($($rest)*) ($($rest)*))
-	};
-
-	// Next value is a map with metadata.
-	(@object [$($elems:expr,)*] ($($key:tt)+) (: {$($map:tt)*} @ $meta:expr $(,$($rest:tt)*)?) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!({$($map)*} @ $meta))] () ($(,$($rest)*)?) ($(,$($rest)*)?))
 	};
 
 	// Next value is a map.
@@ -316,72 +231,40 @@ macro_rules! json {
 	// Must be invoked as: json!($($json)+)
 	//////////////////////////////////////////////////////////////////////////
 
-	(null @ $meta:expr) => {
-		::locspan::Meta($crate::Value::Null, $meta)
-	};
-
 	(null) => {
-		json!(null @ ())
-	};
-
-	(true @ $meta:expr) => {
-		::locspan::Meta($crate::Value::Boolean(true), $meta)
+		$crate::Value::Null
 	};
 
 	(true) => {
-		json!(true @ ())
-	};
-
-	(false @ $meta:expr) => {
-		::locspan::Meta($crate::Value::Boolean(false), $meta)
+		$crate::Value::Boolean(true)
 	};
 
 	(false) => {
-		json!(false @ ())
-	};
-
-	($lit:literal @ $meta:expr) => {
-		::locspan::Meta($lit.try_into().unwrap(), $meta)
+		$crate::Value::Boolean(false)
 	};
 
 	($lit:literal) => {
-		json!($lit @ ())
-	};
-
-	([] @ $meta:expr) => {
-		::locspan::Meta($crate::Value::Array(json_vec![]), $meta)
+		$crate::Value::try_from($lit).unwrap()
 	};
 
 	([]) => {
-		json!([] @ ())
-	};
-
-	([ $($tt:tt)+ ] @ $meta:expr) => {
-		::locspan::Meta($crate::Value::Array(json!(@array [] $($tt)+)), $meta)
+		$crate::Value::Array(json_vec![])
 	};
 
 	([ $($tt:tt)+ ]) => {
-		json!([ $($tt)+ ] @ ())
-	};
-
-	({} @ $meta:expr) => {
-		::locspan::Meta($crate::Value::Object($crate::Object::new()), $meta)
+		$crate::Value::Array(json!(@array [] $($tt)+))
 	};
 
 	({}) => {
-		json!({} @ ())
-	};
-
-	({ $($tt:tt)+ } @ $meta:expr) => {
-		::locspan::Meta($crate::Value::Object(json!(@object [] () ($($tt)+) ($($tt)+))), $meta)
+		$crate::Value::Object($crate::Object::new())
 	};
 
 	({ $($tt:tt)+ }) => {
-		json!({ $($tt)+ } @ ())
+		$crate::Value::Object(json!(@object [] () ($($tt)+) ($($tt)+)))
 	};
 
 	($other:expr) => {
-		$other.into()
+		$crate::Value::from($other)
 	};
 }
 

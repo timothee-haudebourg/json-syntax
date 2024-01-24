@@ -3,215 +3,181 @@ use json_syntax::{
 	object::{Entry, Key},
 	Object, Value,
 };
-use locspan::Meta;
 
 #[test]
 fn macro_01() {
-	let value: Meta<Value<()>, ()> = json! {
+	let value = json! {
 		null
 	};
 
-	assert_eq!(value, Meta(Value::Null, ()))
+	assert_eq!(value, Value::Null)
 }
 
 #[test]
 fn macro_02() {
-	let value: Meta<Value<()>, ()> = json! {
+	let value = json! {
 		true
 	};
 
-	assert_eq!(value, Meta(Value::Boolean(true), ()))
+	assert_eq!(value, Value::Boolean(true))
 }
 
 #[test]
 fn macro_03() {
-	let value: Meta<Value<()>, ()> = json! {
+	let value = json! {
 		false
 	};
 
-	assert_eq!(value, Meta(Value::Boolean(false), ()))
+	assert_eq!(value, Value::Boolean(false))
 }
 
 #[test]
 fn macro_04() {
-	let value: Meta<Value<()>, ()> = json! {
+	let value = json! {
 		[]
 	};
 
-	assert_eq!(value, Meta(Value::Array(vec![]), ()))
+	assert_eq!(value, Value::Array(vec![]))
 }
 
 #[test]
 fn macro_05() {
-	let value: Meta<Value<()>, ()> = json! {
+	let value = json! {
 		{}
 	};
 
-	assert_eq!(value, Meta(Value::Object(Object::default()), ()))
+	assert_eq!(value, Value::Object(Object::default()))
 }
 
 #[test]
 fn macro_06() {
-	let value: Meta<Value<()>, ()> = json! {
+	let value = json! {
 		[ null ]
 	};
 
-	assert_eq!(value, Meta(Value::Array(vec![Meta(Value::Null, ())]), ()))
+	assert_eq!(value, Value::Array(vec![Value::Null]))
 }
 
 #[test]
 fn macro_07() {
-	let value: Meta<Value<()>, ()> = json! {
+	let value = json! {
 		{ "foo": null }
 	};
 
 	assert_eq!(
 		value,
-		Meta(
-			Value::Object(vec![Entry::new(Meta("foo".into(), ()), Meta(Value::Null, ()))].into()),
-			()
-		)
+		Value::Object(vec![Entry::new("foo".into(), Value::Null)].into())
 	)
 }
 
 #[test]
 fn macro_08() {
 	let item = json! { null };
-	let value: Meta<Value<()>, ()> = json! {
+	let value = json! {
 		[ item ]
 	};
 
-	assert_eq!(value, Meta(Value::Array(vec![Meta(Value::Null, ())]), ()))
+	assert_eq!(value, Value::Array(vec![Value::Null]))
 }
 
 #[test]
 fn macro_09() {
-	let value: Meta<Value<()>, ()> = json! {
+	let value = json! {
 		[ [ null ], true, false ]
 	};
 
 	assert_eq!(
 		value,
-		Meta(
-			Value::Array(vec![
-				Meta(Value::Array(vec![Meta(Value::Null, ())]), ()),
-				Meta(Value::Boolean(true), ()),
-				Meta(Value::Boolean(false), ())
-			]),
-			()
-		)
+		Value::Array(vec![
+			Value::Array(vec![Value::Null]),
+			Value::Boolean(true),
+			Value::Boolean(false)
+		])
 	)
 }
 
 #[test]
 fn macro_10() {
-	let value: Meta<Value<()>, ()> = json! {
+	let value = json! {
 		{ "a": true, "b": false }
 	};
 
 	assert_eq!(
 		value,
-		Meta(
-			Value::Object(Object::from_vec(vec![
-				Entry::new(Meta("a".into(), ()), Meta(Value::Boolean(true), ())),
-				Entry::new(Meta("b".into(), ()), Meta(Value::Boolean(false), ()))
-			])),
-			()
-		)
+		Value::Object(Object::from_vec(vec![
+			Entry::new("a".into(), Value::Boolean(true)),
+			Entry::new("b".into(), Value::Boolean(false))
+		]))
 	)
 }
 
 #[test]
 fn macro_11() {
-	let key = Meta(Key::from("a"), ());
+	let key = Key::from("a");
 	let t = json! { true };
 
-	let value: Meta<Value<()>, ()> = json! {
+	let value = json! {
 		{ key: t, "b": false }
 	};
 
 	assert_eq!(
 		value,
-		Meta(
-			Value::Object(Object::from_vec(vec![
-				Entry::new(Meta("a".into(), ()), Meta(Value::Boolean(true), ())),
-				Entry::new(Meta("b".into(), ()), Meta(Value::Boolean(false), ()))
-			])),
-			()
-		)
+		Value::Object(Object::from_vec(vec![
+			Entry::new("a".into(), Value::Boolean(true)),
+			Entry::new("b".into(), Value::Boolean(false))
+		]))
 	)
 }
 
 #[test]
 fn macro_12() {
-	let keys = [Meta(Key::from("a"), ()), Meta(Key::from("c"), ())];
+	let keys = [Key::from("a"), Key::from("c")];
 	let values = [json! { true }, json! { false }];
 
-	let value: Meta<Value<()>, ()> = json! {
+	let value = json! {
 		{ keys[0].clone(): values[0].clone(), "b": {}, keys[1].clone(): values[1].clone() }
 	};
 
 	assert_eq!(
 		value,
-		Meta(
-			Value::Object(Object::from_vec(vec![
-				Entry::new(Meta("a".into(), ()), Meta(Value::Boolean(true), ())),
-				Entry::new(
-					Meta("b".into(), ()),
-					Meta(Value::Object(Object::default()), ())
-				),
-				Entry::new(Meta("c".into(), ()), Meta(Value::Boolean(false), ()))
-			])),
-			()
-		)
+		Value::Object(Object::from_vec(vec![
+			Entry::new("a".into(), Value::Boolean(true)),
+			Entry::new("b".into(), Value::Object(Object::default())),
+			Entry::new("c".into(), Value::Boolean(false))
+		]))
 	)
 }
 
 #[test]
 fn macro_13() {
-	let keys = [Meta(Key::from("a"), 1), Meta(Key::from("c"), 5)];
-	let values = [json! { true @ 2 }, json! { false @ 6 }];
+	let keys = [Key::from("a"), Key::from("c")];
+	let values = [json! { true }, json! { false }];
 
-	let value: Meta<Value<u32>, u32> = json! {
-		{ keys[0].clone(): values[0].clone(), ("b" @ 3): {} @ 4, keys[1].clone(): values[1].clone() } @ 7
+	let value = json! {
+		{ keys[0].clone(): values[0].clone(), ("b"): {}, keys[1].clone(): values[1].clone() }
 	};
 
 	assert_eq!(
 		value,
-		Meta(
-			Value::Object(Object::from_vec(vec![
-				Entry::new(Meta("a".into(), 1), Meta(Value::Boolean(true), 2)),
-				Entry::new(
-					Meta("b".into(), 3),
-					Meta(Value::Object(Object::default()), 4)
-				),
-				Entry::new(Meta("c".into(), 5), Meta(Value::Boolean(false), 6))
-			])),
-			7
-		)
+		Value::Object(Object::from_vec(vec![
+			Entry::new("a".into(), Value::Boolean(true)),
+			Entry::new("b".into(), Value::Object(Object::default())),
+			Entry::new("c".into(), Value::Boolean(false))
+		]))
 	)
 }
 
 #[test]
 fn macro_14() {
-	let value: Meta<Value<()>, ()> = json! {
+	let value = json! {
 		{ "a": 0.1f32, "b": 1.1e10f32 }
 	};
 
 	assert_eq!(
 		value,
-		Meta(
-			Value::Object(Object::from_vec(vec![
-				Entry::new(
-					Meta("a".into(), ()),
-					Meta(Value::Number(0.1f32.try_into().unwrap()), ())
-				),
-				Entry::new(
-					Meta("b".into(), ()),
-					Meta(Value::Number(1.1e10f32.try_into().unwrap()), ())
-				)
-			])),
-			()
-		)
+		Value::Object(Object::from_vec(vec![
+			Entry::new("a".into(), Value::Number(0.1f32.try_into().unwrap())),
+			Entry::new("b".into(), Value::Number(1.1e10f32.try_into().unwrap()))
+		]))
 	)
 }

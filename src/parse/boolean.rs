@@ -1,47 +1,47 @@
 use super::{Context, Error, Parse, Parser};
 use decoded_char::DecodedChar;
-use locspan::{Meta, Span};
+use locspan::Meta;
 
-impl<M> Parse<M> for bool {
-	fn parse_spanned<C, F, E>(
-		parser: &mut Parser<C, F, E>,
+impl Parse for bool {
+	fn parse_in<C, E>(
+		parser: &mut Parser<C, E>,
 		_context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
+	) -> Result<Meta<Self, usize>, Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
-		F: FnMut(Span) -> M,
 	{
+		let i = parser.begin_fragment();
 		match parser.next_char()? {
-			Some('t') => match parser.next_char()? {
-				Some('r') => match parser.next_char()? {
-					Some('u') => match parser.next_char()? {
-						Some('e') => Ok(Meta(true, parser.position.current_span())),
-						unexpected => {
-							Err(Meta(Error::unexpected(unexpected), parser.position.last()))
+			(_, Some('t')) => match parser.next_char()? {
+				(_, Some('r')) => match parser.next_char()? {
+					(_, Some('u')) => match parser.next_char()? {
+						(_, Some('e')) => {
+							parser.end_fragment(i);
+							Ok(Meta(true, i))
 						}
+						(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 					},
-					unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
+					(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 				},
-				unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
+				(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 			},
-			Some('f') => match parser.next_char()? {
-				Some('a') => match parser.next_char()? {
-					Some('l') => match parser.next_char()? {
-						Some('s') => match parser.next_char()? {
-							Some('e') => Ok(Meta(false, parser.position.current_span())),
-							unexpected => {
-								Err(Meta(Error::unexpected(unexpected), parser.position.last()))
+			(_, Some('f')) => match parser.next_char()? {
+				(_, Some('a')) => match parser.next_char()? {
+					(_, Some('l')) => match parser.next_char()? {
+						(_, Some('s')) => match parser.next_char()? {
+							(_, Some('e')) => {
+								parser.end_fragment(i);
+								Ok(Meta(false, i))
 							}
+							(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 						},
-						unexpected => {
-							Err(Meta(Error::unexpected(unexpected), parser.position.last()))
-						}
+						(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 					},
-					unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
+					(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 				},
-				unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
+				(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 			},
-			unexpected => Err(Meta(Error::unexpected(unexpected), parser.position.last())),
+			(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 		}
 	}
 }

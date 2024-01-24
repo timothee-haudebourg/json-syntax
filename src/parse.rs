@@ -1,8 +1,6 @@
-use crate::Value;
 use decoded_char::DecodedChar;
 use locspan::{Meta, Span};
 use std::fmt;
-use std::iter::Peekable;
 
 mod array;
 mod boolean;
@@ -11,6 +9,8 @@ mod number;
 mod object;
 mod string;
 mod value;
+
+use crate::CodeMap;
 
 /// Parser options.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -57,187 +57,103 @@ impl Default for Options {
 	}
 }
 
-pub trait Parse<M>: Sized {
-	fn parse_str<F>(content: &str, metadata_builder: F) -> Result<Meta<Self, M>, Meta<Error<M>, M>>
-	where
-		F: FnMut(Span) -> M,
-	{
-		Self::parse_utf8(content.chars().map(Ok), metadata_builder)
+pub trait Parse: Sized {
+	fn parse_str(content: &str) -> Result<(Self, CodeMap), Error> {
+		Self::parse_utf8(content.chars().map(Ok))
 	}
 
-	fn parse_str_with<F>(
-		content: &str,
-		options: Options,
-		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<M>, M>>
-	where
-		F: FnMut(Span) -> M,
-	{
-		Self::parse_utf8_with(content.chars().map(Ok), options, metadata_builder)
+	fn parse_str_with(content: &str, options: Options) -> Result<(Self, CodeMap), Error> {
+		Self::parse_utf8_with(content.chars().map(Ok), options)
 	}
 
-	fn parse_infallible_utf8<C, F>(
-		chars: C,
-		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<M>, M>>
+	fn parse_infallible_utf8<C>(chars: C) -> Result<(Self, CodeMap), Error>
 	where
 		C: Iterator<Item = char>,
-		F: FnMut(Span) -> M,
 	{
-		Self::parse_infallible(chars.map(DecodedChar::from_utf8), metadata_builder)
+		Self::parse_infallible(chars.map(DecodedChar::from_utf8))
 	}
 
-	fn parse_utf8_infallible_with<C, F>(
-		chars: C,
-		options: Options,
-		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<M>, M>>
+	fn parse_utf8_infallible_with<C>(chars: C, options: Options) -> Result<(Self, CodeMap), Error>
 	where
 		C: Iterator<Item = char>,
-		F: FnMut(Span) -> M,
 	{
-		Self::parse_infallible_with(chars.map(DecodedChar::from_utf8), options, metadata_builder)
+		Self::parse_infallible_with(chars.map(DecodedChar::from_utf8), options)
 	}
 
-	fn parse_utf8<C, F, E>(
-		chars: C,
-		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<M, E>, M>>
+	fn parse_utf8<C, E>(chars: C) -> Result<(Self, CodeMap), Error<E>>
 	where
 		C: Iterator<Item = Result<char, E>>,
-		F: FnMut(Span) -> M,
 	{
-		Self::parse(
-			chars.map(|c| c.map(DecodedChar::from_utf8)),
-			metadata_builder,
-		)
+		Self::parse(chars.map(|c| c.map(DecodedChar::from_utf8)))
 	}
 
-	fn parse_utf8_with<C, F, E>(
-		chars: C,
-		options: Options,
-		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<M, E>, M>>
+	fn parse_utf8_with<C, E>(chars: C, options: Options) -> Result<(Self, CodeMap), Error<E>>
 	where
 		C: Iterator<Item = Result<char, E>>,
-		F: FnMut(Span) -> M,
 	{
-		Self::parse_with(
-			chars.map(|c| c.map(DecodedChar::from_utf8)),
-			options,
-			metadata_builder,
-		)
+		Self::parse_with(chars.map(|c| c.map(DecodedChar::from_utf8)), options)
 	}
 
-	fn parse_infallible<C, F>(
-		chars: C,
-		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<M>, M>>
+	fn parse_infallible<C>(chars: C) -> Result<(Self, CodeMap), Error>
 	where
 		C: Iterator<Item = DecodedChar>,
-		F: FnMut(Span) -> M,
 	{
-		let mut parser = Parser::new(chars.map(Ok), metadata_builder);
-		Self::parse_in(&mut parser, Context::None)
+		let mut parser = Parser::new(chars.map(Ok));
+		let value = Self::parse_in(&mut parser, Context::None)?.into_value();
+		Ok((value, parser.code_map))
 	}
 
-	fn parse_infallible_with<C, F>(
-		chars: C,
-		options: Options,
-		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<M>, M>>
+	fn parse_infallible_with<C>(chars: C, options: Options) -> Result<(Self, CodeMap), Error>
 	where
 		C: Iterator<Item = DecodedChar>,
-		F: FnMut(Span) -> M,
 	{
-		let mut parser = Parser::new_with(chars.map(Ok), options, metadata_builder);
-		Self::parse_in(&mut parser, Context::None)
+		let mut parser = Parser::new_with(chars.map(Ok), options);
+		let value = Self::parse_in(&mut parser, Context::None)?.into_value();
+		Ok((value, parser.code_map))
 	}
 
-	fn parse<C, F, E>(chars: C, metadata_builder: F) -> Result<Meta<Self, M>, Meta<Error<M, E>, M>>
+	fn parse<C, E>(chars: C) -> Result<(Self, CodeMap), Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
-		F: FnMut(Span) -> M,
 	{
-		let mut parser = Parser::new(chars, metadata_builder);
-		Self::parse_in(&mut parser, Context::None)
+		let mut parser = Parser::new(chars);
+		let value = Self::parse_in(&mut parser, Context::None)?.into_value();
+		Ok((value, parser.code_map))
 	}
 
-	fn parse_with<C, F, E>(
-		chars: C,
-		options: Options,
-		metadata_builder: F,
-	) -> Result<Meta<Self, M>, Meta<Error<M, E>, M>>
+	fn parse_with<C, E>(chars: C, options: Options) -> Result<(Self, CodeMap), Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
-		F: FnMut(Span) -> M,
 	{
-		let mut parser = Parser::new_with(chars, options, metadata_builder);
-		Self::parse_in(&mut parser, Context::None)
+		let mut parser = Parser::new_with(chars, options);
+		let value = Self::parse_in(&mut parser, Context::None)?.into_value();
+		Ok((value, parser.code_map))
 	}
 
-	fn parse_in<C, F, E>(
-		parser: &mut Parser<C, F, E>,
+	fn parse_in<C, E>(
+		parser: &mut Parser<C, E>,
 		context: Context,
-	) -> Result<Meta<Self, M>, Meta<Error<M, E>, M>>
+	) -> Result<Meta<Self, usize>, Error<E>>
 	where
-		C: Iterator<Item = Result<DecodedChar, E>>,
-		F: FnMut(Span) -> M,
-	{
-		let Meta(value, span) = Self::parse_spanned(parser, context)?;
-		Ok(Meta(value, parser.position.metadata_at(span)))
-	}
-
-	fn parse_spanned<C, F, E>(
-		parser: &mut Parser<C, F, E>,
-		context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
-	where
-		C: Iterator<Item = Result<DecodedChar, E>>,
-		F: FnMut(Span) -> M;
-}
-
-pub trait ValueOrParse<M>: Parse<M> {
-	fn value_or_parse<C, F, E>(
-		value: Option<Meta<Value<M>, Span>>,
-		parser: &mut Parser<C, F, E>,
-		context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
-	where
-		C: Iterator<Item = Result<DecodedChar, E>>,
-		F: FnMut(Span) -> M;
-}
-
-impl<T, M> ValueOrParse<M> for T
-where
-	T: Parse<M> + From<Value<M>>,
-{
-	fn value_or_parse<C, F, E>(
-		value: Option<Meta<Value<M>, Span>>,
-		parser: &mut Parser<C, F, E>,
-		context: Context,
-	) -> Result<Meta<Self, Span>, Meta<Error<M, E>, M>>
-	where
-		C: Iterator<Item = Result<DecodedChar, E>>,
-		F: FnMut(Span) -> M,
-	{
-		match value {
-			Some(value) => Ok(value.cast()),
-			None => Self::parse_spanned(parser, context),
-		}
-	}
+		C: Iterator<Item = Result<DecodedChar, E>>;
 }
 
 /// JSON parser.
-pub struct Parser<C: Iterator<Item = Result<DecodedChar, E>>, F, E> {
+pub struct Parser<C: Iterator<Item = Result<DecodedChar, E>>, E> {
 	/// Character stream.
-	chars: Peekable<C>,
+	chars: C,
+
+	/// Pending next char.
+	pending: Option<DecodedChar>,
 
 	/// Position in the stream.
-	position: Position<F>,
+	position: usize,
 
 	/// Parser options.
 	options: Options,
+
+	/// Code-map.
+	code_map: CodeMap,
 }
 
 /// Checks if the given char `c` is a JSON whitespace.
@@ -246,67 +162,77 @@ pub fn is_whitespace(c: char) -> bool {
 	matches!(c, ' ' | '\t' | '\r' | '\n')
 }
 
-impl<C: Iterator<Item = Result<DecodedChar, E>>, F, M, E> Parser<C, F, E>
-where
-	F: FnMut(Span) -> M,
-{
-	pub fn new(chars: C, metadata_builder: F) -> Self {
+impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Parser<C, E> {
+	pub fn new(chars: C) -> Self {
 		Self {
-			chars: chars.peekable(),
-			position: Position::new(metadata_builder),
+			chars,
+			pending: None,
+			position: 0,
 			options: Options::default(),
+			code_map: CodeMap::default(),
 		}
 	}
 
-	pub fn new_with(chars: C, options: Options, metadata_builder: F) -> Self {
+	pub fn new_with(chars: C, options: Options) -> Self {
 		Self {
-			chars: chars.peekable(),
-			position: Position::new(metadata_builder),
+			chars,
+			pending: None,
+			position: 0,
 			options,
+			code_map: CodeMap::default(),
 		}
 	}
 
-	fn peek_char(&mut self) -> Result<Option<char>, Meta<Error<M, E>, M>> {
-		match self.chars.peek() {
-			None => Ok(None),
-			Some(Ok(c)) => Ok(Some(c.chr())),
-			Some(Err(_)) => self.next_char(),
+	fn begin_fragment(&mut self) -> usize {
+		self.code_map.reserve(self.position)
+	}
+
+	fn end_fragment(&mut self, i: usize) {
+		let entry_count = self.code_map.len();
+		let entry = self.code_map.get_mut(i).unwrap();
+		entry.span.set_end(self.position);
+		entry.volume = entry_count - i;
+	}
+
+	fn peek_char(&mut self) -> Result<Option<char>, Error<E>> {
+		match self.pending {
+			Some(c) => Ok(Some(c.chr())),
+			None => match self.chars.next() {
+				Some(Ok(c)) => {
+					self.pending = Some(c);
+					Ok(Some(c.chr()))
+				}
+				Some(Err(e)) => Err(Error::Stream(self.position, e)),
+				None => Ok(None),
+			},
 		}
 	}
 
-	fn next_char(&mut self) -> Result<Option<char>, Meta<Error<M, E>, M>> {
-		match self.chars.next() {
-			None => Ok(None),
-			Some(Ok(c)) => {
-				self.position.span.push(c.len());
-				self.position.last_span.clear();
-				self.position.last_span.push(c.len());
-				Ok(Some(c.into_char()))
-			}
-			Some(Err(e)) => Err(Meta(Error::Stream(e), self.position.end())),
-		}
+	fn next_char(&mut self) -> Result<(usize, Option<char>), Error<E>> {
+		let c = match self.pending.take() {
+			Some(c) => Some(c),
+			None => self
+				.chars
+				.next()
+				.transpose()
+				.map_err(|e| Error::Stream(self.position, e))?,
+		};
+
+		let p = self.position;
+		let c = c.map(|c| {
+			self.position += c.len();
+			c.chr()
+		});
+
+		Ok((p, c))
 	}
 
-	fn skip_whitespaces(&mut self) -> Result<(), Meta<Error<M, E>, M>> {
+	fn skip_whitespaces(&mut self) -> Result<(), Error<E>> {
 		while let Some(c) = self.peek_char()? {
 			if is_whitespace(c) {
 				self.next_char()?;
 			} else {
 				break;
-			}
-		}
-
-		self.position.span.clear();
-		Ok(())
-	}
-
-	fn skip_trailing_whitespaces(&mut self, context: Context) -> Result<(), Meta<Error<M, E>, M>> {
-		self.skip_whitespaces()?;
-
-		if let Some(c) = self.peek_char()? {
-			if !context.follows(c) {
-				// panic!("unexpected {:?} in {:?}", c, context);
-				return Err(Meta(Error::unexpected(Some(c)), self.position.last()));
 			}
 		}
 
@@ -316,92 +242,81 @@ where
 
 /// Parse error.
 #[derive(Debug)]
-pub enum Error<M, E = core::convert::Infallible> {
+pub enum Error<E = core::convert::Infallible> {
 	/// Stream error.
-	Stream(E),
+	///
+	/// The first parameter is the byte index at which the error occurred.
+	Stream(usize, E),
 
 	/// Unexpected character or end of stream.
-	Unexpected(Option<char>),
+	///
+	/// The first parameter is the byte index at which the error occurred.
+	Unexpected(usize, Option<char>),
 
 	/// Invalid unicode codepoint.
-	InvalidUnicodeCodePoint(u32),
+	///
+	/// The first parameter is the span at which the error occurred.
+	InvalidUnicodeCodePoint(Span, u32),
 
 	/// Missing low surrogate in a string.
-	MissingLowSurrogate(Meta<u16, M>),
+	///
+	/// The first parameter is the byte index at which the error occurred.
+	MissingLowSurrogate(Span, u16),
 
 	/// Invalid low surrogate in a string.
-	InvalidLowSurrogate(Meta<u16, M>, u32),
+	///
+	/// The first parameter is the span at which the error occurred.
+	InvalidLowSurrogate(Span, u16, u32),
 }
 
-impl<M, E> Error<M, E> {
+impl<E> Error<E> {
 	/// Creates an `Unexpected` error.
 	#[inline(always)]
-	fn unexpected(c: Option<char>) -> Self {
+	fn unexpected(position: usize, c: Option<char>) -> Self {
 		// panic!("unexpected {:?}", c);
-		Self::Unexpected(c)
+		Self::Unexpected(position, c)
+	}
+
+	pub fn position(&self) -> usize {
+		match self {
+			Self::Stream(p, _) => *p,
+			Self::Unexpected(p, _) => *p,
+			Self::InvalidUnicodeCodePoint(span, _) => span.start(),
+			Self::MissingLowSurrogate(span, _) => span.start(),
+			Self::InvalidLowSurrogate(span, _, _) => span.start(),
+		}
+	}
+
+	pub fn span(&self) -> Span {
+		match self {
+			Self::Stream(p, _) => Span::new(*p, *p),
+			Self::Unexpected(p, _) => Span::new(*p, *p),
+			Self::InvalidUnicodeCodePoint(span, _) => *span,
+			Self::MissingLowSurrogate(span, _) => *span,
+			Self::InvalidLowSurrogate(span, _, _) => *span,
+		}
 	}
 }
 
-impl<E: fmt::Display, M> fmt::Display for Error<M, E> {
+impl<E: fmt::Display> fmt::Display for Error<E> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			Self::Stream(e) => e.fmt(f),
-			Self::Unexpected(Some(c)) => write!(f, "unexpected character `{}`", c),
-			Self::Unexpected(None) => write!(f, "unexpected end of file"),
-			Self::InvalidUnicodeCodePoint(c) => write!(f, "invalid Unicode code point {:x}", *c),
-			Self::MissingLowSurrogate(_) => write!(f, "missing low surrogate"),
-			Self::InvalidLowSurrogate(_, _) => write!(f, "invalid low surrogate"),
+			Self::Stream(_, e) => e.fmt(f),
+			Self::Unexpected(_, Some(c)) => write!(f, "unexpected character `{}`", c),
+			Self::Unexpected(_, None) => write!(f, "unexpected end of file"),
+			Self::InvalidUnicodeCodePoint(_, c) => write!(f, "invalid Unicode code point {:x}", *c),
+			Self::MissingLowSurrogate(_, _) => write!(f, "missing low surrogate"),
+			Self::InvalidLowSurrogate(_, _, _) => write!(f, "invalid low surrogate"),
 		}
 	}
 }
 
-impl<E: 'static + std::error::Error, M: std::fmt::Debug> std::error::Error for Error<M, E> {
+impl<E: 'static + std::error::Error> std::error::Error for Error<E> {
 	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
 		match self {
-			Self::Stream(e) => Some(e),
+			Self::Stream(_, e) => Some(e),
 			_ => None,
 		}
-	}
-}
-
-pub type MetaError<M, E = core::convert::Infallible> = Meta<Error<M, E>, M>;
-
-/// Lexer position.
-struct Position<F> {
-	span: Span,
-	last_span: Span,
-	metadata_builder: F,
-}
-
-impl<F> Position<F> {
-	fn new(metadata_builder: F) -> Self {
-		Self {
-			span: Span::default(),
-			last_span: Span::default(),
-			metadata_builder,
-		}
-	}
-
-	fn current_span(&self) -> Span {
-		self.span
-	}
-}
-
-impl<F: FnMut(Span) -> M, M> Position<F> {
-	fn metadata_at(&mut self, span: Span) -> M {
-		(self.metadata_builder)(span)
-	}
-
-	fn current(&mut self) -> M {
-		(self.metadata_builder)(self.span)
-	}
-
-	fn end(&mut self) -> M {
-		(self.metadata_builder)(self.span.end().into())
-	}
-
-	fn last(&mut self) -> M {
-		(self.metadata_builder)(self.last_span)
 	}
 }
 
