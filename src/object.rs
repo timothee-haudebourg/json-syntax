@@ -344,11 +344,29 @@ impl Object {
 		self.indexes.insert(&self.entries, index)
 	}
 
+	/// Push the given key-value pair to the top of the object.
+	///
+	/// Returns `true` if the key was not already present in the object,
+	/// and `false` otherwise.
+	/// Any previous entry matching the key is **not** overridden: duplicates
+	/// are preserved, in order.
+	///
+	/// Runs in `O(n)`.
+	pub fn push_front(&mut self, key: Key, value: Value) -> bool {
+		self.push_entry_front(Entry::new(key, value))
+	}
+
+	pub fn push_entry_front(&mut self, entry: Entry) -> bool {
+		self.entries.insert(0, entry);
+		self.indexes.shift_up(0);
+		self.indexes.insert(&self.entries, 0)
+	}
+
 	/// Removes the entry at the given index.
 	pub fn remove_at(&mut self, index: usize) -> Option<Entry> {
 		if index < self.entries.len() {
 			self.indexes.remove(&self.entries, index);
-			self.indexes.shift(index);
+			self.indexes.shift_down(index);
 			Some(self.entries.remove(index))
 		} else {
 			None
@@ -375,6 +393,28 @@ impl Object {
 				self.push(key, value);
 				None
 			}
+		}
+	}
+
+	/// Inserts the given key-value pair on top of the object.
+	///
+	/// If one or more entries are already matching the given key,
+	/// all of them are removed and returned in the resulting iterator.
+	pub fn insert_front(&mut self, key: Key, value: Value) -> RemovedByInsertFront {
+		if let Some(first) = self.entries.first_mut() {
+			if first.key == key {
+				let first = core::mem::replace(first, Entry::new(key, value));
+				return RemovedByInsertFront {
+					first: Some(first),
+					object: self,
+				};
+			}
+		}
+
+		self.push_front(key, value);
+		RemovedByInsertFront {
+			first: None,
+			object: self,
 		}
 	}
 
@@ -734,6 +774,33 @@ impl<'a> Drop for RemovedByInsertion<'a> {
 	}
 }
 
+pub struct RemovedByInsertFront<'a> {
+	first: Option<Entry>,
+	object: &'a mut Object,
+}
+
+impl<'a> Iterator for RemovedByInsertFront<'a> {
+	type Item = Entry;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match self.first.take() {
+			Some(entry) => Some(entry),
+			None => {
+				let key = &self.object.entries[0].key;
+				self.object
+					.redundant_index_of(key)
+					.and_then(|index| self.object.remove_at(index))
+			}
+		}
+	}
+}
+
+impl<'a> Drop for RemovedByInsertFront<'a> {
+	fn drop(&mut self) {
+		self.last();
+	}
+}
+
 pub struct RemovedEntries<'a, 'q, Q: ?Sized>
 where
 	Q: Hash + Equivalent<Key>,
@@ -808,5 +875,36 @@ mod tests {
 
 		assert_eq!(a, b);
 		assert_eq!(a.as_unordered(), b.as_unordered())
+	}
+
+	#[test]
+	fn insert_front1() {
+		let mut a = Object::new();
+		a.push("a".into(), Value::Null);
+		a.push("b".into(), Value::Null);
+		a.push("c".into(), Value::Null);
+		a.insert_front("b".into(), Value::Null);
+
+		let mut b = Object::new();
+		b.push("b".into(), Value::Null);
+		b.push("a".into(), Value::Null);
+		b.push("c".into(), Value::Null);
+
+		assert_eq!(a, b);
+	}
+
+	#[test]
+	fn insert_front2() {
+		let mut a = Object::new();
+		a.push("a".into(), Value::Null);
+		a.push("a".into(), Value::Null);
+		a.push("c".into(), Value::Null);
+		a.insert_front("a".into(), Value::Null);
+
+		let mut b = Object::new();
+		b.push("a".into(), Value::Null);
+		b.push("c".into(), Value::Null);
+
+		assert_eq!(a, b);
 	}
 }

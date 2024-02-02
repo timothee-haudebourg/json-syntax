@@ -101,7 +101,7 @@ impl Indexes {
 	}
 
 	/// Decreases all index greater than `index` by one.
-	pub fn shift(&mut self, index: usize) {
+	pub fn shift_down(&mut self, index: usize) {
 		if self.rep > index {
 			self.rep -= 1
 		}
@@ -109,6 +109,19 @@ impl Indexes {
 		for i in &mut self.other {
 			if *i > index {
 				*i -= 1
+			}
+		}
+	}
+
+	/// Increases all index greater than or equal to `index` by one.
+	pub fn shift_up(&mut self, index: usize) {
+		if self.rep >= index {
+			self.rep += 1
+		}
+
+		for i in &mut self.other {
+			if *i >= index {
+				*i += 1
 			}
 		}
 	}
@@ -211,11 +224,21 @@ impl<S: BuildHasher> IndexMap<S> {
 	}
 
 	/// Decreases all index greater than `index` by one everywhere in the table.
-	pub fn shift(&mut self, index: usize) {
+	pub fn shift_down(&mut self, index: usize) {
 		unsafe {
 			for bucket in self.table.iter() {
 				let indexes = bucket.as_mut();
-				indexes.shift(index)
+				indexes.shift_down(index)
+			}
+		}
+	}
+
+	/// Increases all index greater than or equal to `index` by one everywhere in the table.
+	pub fn shift_up(&mut self, index: usize) {
+		unsafe {
+			for bucket in self.table.iter() {
+				let indexes = bucket.as_mut();
+				indexes.shift_up(index)
 			}
 		}
 	}
