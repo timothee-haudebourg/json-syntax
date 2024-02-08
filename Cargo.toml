@@ -1,6 +1,6 @@
 [package]
 name = "json-syntax"
-version = "0.11.2"
+version = "0.11.3"
 edition = "2021"
 authors = ["Timothée Haudebourg <author@haudebourg.net>"]
 description = "Strict JSON parsing and mapping library"
@@ -16,7 +16,7 @@ readme = "README.md"
 canonicalize = [ "ryu-js", "json-number/canonical" ]
 
 ## Serialization/Deserialization support using `serde`.
-serde = [ "dep:serde", "json-number/serde" ]
+serde = [ "dep:serde", "json-number/serde", "smallstr/serde" ]
 
 ## Compatibility layer with the `serde_json` crate.
 serde_json = [ "dep:serde_json", "json-number/serde_json" ]

@@ -75,19 +75,17 @@ impl<'de> Deserialize<'de> for Value {
 				Ok(NumberBuf::try_from(value).map_or(Value::Null, Value::Number))
 			}
 
-			#[cfg(any(feature = "std", feature = "alloc"))]
 			#[inline]
 			fn visit_str<E>(self, value: &str) -> Result<Value, E>
 			where
 				E: serde::de::Error,
 			{
-				self.visit_string(String::from(value))
+				Ok(Value::String(value.into()))
 			}
 
-			#[cfg(any(feature = "std", feature = "alloc"))]
 			#[inline]
 			fn visit_string<E>(self, value: String) -> Result<Value, E> {
-				Ok(Value::String(value))
+				Ok(Value::String(value.into()))
 			}
 
 			#[inline]
@@ -122,34 +120,17 @@ impl<'de> Deserialize<'de> for Value {
 				Ok(Value::Array(vec))
 			}
 
-			#[cfg(any(feature = "std", feature = "alloc"))]
 			fn visit_map<V>(self, mut visitor: V) -> Result<Value, V::Error>
 			where
 				V: MapAccess<'de>,
 			{
-				match visitor.next_key_seed(KeyClassifier)? {
-					#[cfg(feature = "arbitrary_precision")]
-					Some(KeyClass::Number) => {
-						let number: NumberFromString = visitor.next_value()?;
-						Ok(Value::Number(number.value))
-					}
-					#[cfg(feature = "raw_value")]
-					Some(KeyClass::RawValue) => {
-						let value = visitor.next_value_seed(crate::raw::BoxedFromString)?;
-						crate::from_str(value.get()).map_err(de::Error::custom)
-					}
-					Some(KeyClass::Map(first_key)) => {
-						let mut values = Map::new();
+				let mut object = Object::new();
 
-						values.insert(first_key, tri!(visitor.next_value()));
-						while let Some((key, value)) = tri!(visitor.next_entry()) {
-							values.insert(key, value);
-						}
-
-						Ok(Value::Object(values))
-					}
-					None => Ok(Value::Object(Map::new())),
+				while let Some((key, value)) = visitor.next_entry()? {
+					object.insert(key, value);
 				}
+
+				Ok(Value::Object(object))
 			}
 		}
 
