@@ -35,7 +35,7 @@
 //! let mut value = Value::parse_str(&input).expect("parse error").0;
 //! println!("value: {}", value.pretty_print());
 //! ```
-pub use json_number::Number;
+pub use json_number::{InvalidNumber, Number};
 use smallvec::SmallVec;
 use std::fmt;
 
@@ -49,6 +49,10 @@ pub mod print;
 pub use print::Print;
 mod convert;
 mod macros;
+
+pub mod number {
+	pub use json_number::Buffer;
+}
 
 #[cfg(feature = "serde")]
 mod serde;

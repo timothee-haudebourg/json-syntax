@@ -1,6 +1,6 @@
 [package]
 name = "json-syntax"
-version = "0.11.3"
+version = "0.11.4"
 edition = "2021"
 authors = ["Timothée Haudebourg <author@haudebourg.net>"]
 description = "Strict JSON parsing and mapping library"
@@ -22,7 +22,7 @@ serde = [ "dep:serde", "json-number/serde", "smallstr/serde" ]
 serde_json = [ "dep:serde_json", "json-number/serde_json" ]
 
 [dependencies]
-json-number = { version = "0.4.6", features = [ "smallnumberbuf" ] }
+json-number = { version = "0.4.8", features = [ "smallnumberbuf" ] }
 smallvec = "1.9"
 smallstr = "0.3"
 locspan = "0.8.2"
