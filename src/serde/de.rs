@@ -124,13 +124,73 @@ impl<'de> Deserialize<'de> for Value {
 			where
 				V: MapAccess<'de>,
 			{
-				let mut object = Object::new();
+				const NUMBER_TOKEN: &str = "$serde_json::private::Number";
 
-				while let Some((key, value)) = visitor.next_entry()? {
-					object.insert(key, value);
+				enum MapTag {
+					Number,
+					None(Key)
 				}
 
-				Ok(Value::Object(object))
+				impl<'de> Deserialize<'de> for MapTag {
+					fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+					where
+						D: serde::Deserializer<'de>
+					{
+						struct Visitor;
+
+						impl<'de> serde::de::Visitor<'de> for Visitor {
+							type Value = MapTag;
+							
+							fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+								formatter.write_str("a string key")
+							}
+
+							fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+							where
+								E: serde::de::Error
+							{
+								if v == NUMBER_TOKEN {
+									Ok(MapTag::Number)
+								} else {
+									Ok(MapTag::None(v.into()))
+								}
+							}
+							
+							fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+							where
+								E: serde::de::Error
+							{
+								if v == NUMBER_TOKEN {
+									Ok(MapTag::Number)
+								} else {
+									Ok(MapTag::None(v.into()))
+								}
+							}
+						}
+
+						deserializer.deserialize_string(Visitor)
+					}
+				}
+
+				match visitor.next_key()? {
+					Some(MapTag::Number) => {
+						let value = visitor.next_value()?;
+						Ok(Value::Number(value))
+					}
+					Some(MapTag::None(key)) => {
+						let mut object = Object::new();
+
+						object.insert(key, visitor.next_value()?);
+						while let Some((key, value)) = visitor.next_entry()? {
+							object.insert(key, value);
+						}
+
+						Ok(Value::Object(object))
+					}
+					None => {
+						Ok(Value::Object(Object::new()))
+					}
+				}
 			}
 		}
 
