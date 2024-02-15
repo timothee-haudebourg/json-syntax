@@ -12,6 +12,8 @@ use crate::{
 	Array, NumberBuf, Object, Value,
 };
 
+use super::NUMBER_TOKEN;
+
 impl Value {
 	#[cold]
 	fn invalid_type<E>(&self, exp: &dyn Expected) -> E
@@ -124,30 +126,28 @@ impl<'de> Deserialize<'de> for Value {
 			where
 				V: MapAccess<'de>,
 			{
-				const NUMBER_TOKEN: &str = "$serde_json::private::Number";
-
 				enum MapTag {
 					Number,
-					None(Key)
+					None(Key),
 				}
 
 				impl<'de> Deserialize<'de> for MapTag {
 					fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 					where
-						D: serde::Deserializer<'de>
+						D: serde::Deserializer<'de>,
 					{
 						struct Visitor;
 
 						impl<'de> serde::de::Visitor<'de> for Visitor {
 							type Value = MapTag;
-							
+
 							fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 								formatter.write_str("a string key")
 							}
 
 							fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
 							where
-								E: serde::de::Error
+								E: serde::de::Error,
 							{
 								if v == NUMBER_TOKEN {
 									Ok(MapTag::Number)
@@ -155,10 +155,10 @@ impl<'de> Deserialize<'de> for Value {
 									Ok(MapTag::None(v.into()))
 								}
 							}
-							
+
 							fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
 							where
-								E: serde::de::Error
+								E: serde::de::Error,
 							{
 								if v == NUMBER_TOKEN {
 									Ok(MapTag::Number)
@@ -187,9 +187,7 @@ impl<'de> Deserialize<'de> for Value {
 
 						Ok(Value::Object(object))
 					}
-					None => {
-						Ok(Value::Object(Object::new()))
-					}
+					None => Ok(Value::Object(Object::new())),
 				}
 			}
 		}

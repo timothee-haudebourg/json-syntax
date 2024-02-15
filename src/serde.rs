@@ -7,6 +7,8 @@ mod ser;
 pub use de::*;
 pub use ser::*;
 
+const NUMBER_TOKEN: &str = "$serde_json::private::Number";
+
 /// Serializes the given `value` into a JSON [`Value`].
 ///
 /// # Example
