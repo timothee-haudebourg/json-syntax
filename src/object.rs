@@ -290,6 +290,49 @@ impl Object {
 		}
 	}
 
+	/// Returns the (first) value associated to `key`, or insert a `key`-`value`
+	/// entry where `value` is returned by the given function `f`.
+	pub fn get_or_insert_with<Q: ?Sized>(&mut self, key: &Q, f: impl FnOnce() -> Value) -> &Value
+	where
+		Q: Hash + Equivalent<Key> + ToOwned,
+		Q::Owned: Into<Key>,
+	{
+		let index = match self.index_of(key) {
+			Some(index) => index,
+			None => {
+				let index = self.entries.len();
+				self.push(key.to_owned().into(), f());
+				index
+			}
+		};
+
+		&self.entries[index].value
+	}
+
+	/// Returns a mutable reference to the (first) value associated to `key`, or
+	/// insert a `key`-`value` entry where `value` is returned by the given
+	/// function `f`.
+	pub fn get_mut_or_insert_with<Q: ?Sized>(
+		&mut self,
+		key: &Q,
+		f: impl FnOnce() -> Value,
+	) -> &mut Value
+	where
+		Q: Hash + Equivalent<Key> + ToOwned,
+		Q::Owned: Into<Key>,
+	{
+		let index = match self.index_of(key) {
+			Some(index) => index,
+			None => {
+				let index = self.entries.len();
+				self.push(key.to_owned().into(), f());
+				index
+			}
+		};
+
+		&mut self.entries[index].value
+	}
+
 	pub fn index_of<Q: ?Sized>(&self, key: &Q) -> Option<usize>
 	where
 		Q: Hash + Equivalent<Key>,
