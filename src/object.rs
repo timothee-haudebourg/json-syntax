@@ -877,6 +877,17 @@ where
 #[derive(Debug)]
 pub struct Duplicate<T>(pub T, pub T);
 
+/// Duplicate entry error.
+pub type DuplicateEntry = Duplicate<Entry>;
+
+impl fmt::Display for DuplicateEntry {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "duplicate entry `{}`", self.0.key)
+	}
+}
+
+impl std::error::Error for DuplicateEntry {}
+
 #[cfg(test)]
 mod tests {
 	use crate::BorrowUnordered;
