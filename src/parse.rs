@@ -1,6 +1,6 @@
 use decoded_char::DecodedChar;
 use locspan::{Meta, Span};
-use std::fmt;
+use std::{fmt, io};
 
 mod array;
 mod boolean;
@@ -58,6 +58,16 @@ impl Default for Options {
 }
 
 pub trait Parse: Sized {
+	fn parse_slice(content: &[u8]) -> Result<(Self, CodeMap), Error> {
+		Self::parse_utf8(utf8_decode::Decoder::new(content.iter().copied()))
+			.map_err(Error::io_into_utf8)
+	}
+
+	fn parse_slice_with(content: &[u8], options: Options) -> Result<(Self, CodeMap), Error> {
+		Self::parse_utf8_with(utf8_decode::Decoder::new(content.iter().copied()), options)
+			.map_err(Error::io_into_utf8)
+	}
+
 	fn parse_str(content: &str) -> Result<(Self, CodeMap), Error> {
 		Self::parse_utf8(content.chars().map(Ok))
 	}
@@ -267,6 +277,9 @@ pub enum Error<E = core::convert::Infallible> {
 	///
 	/// The first parameter is the span at which the error occurred.
 	InvalidLowSurrogate(Span, u16, u32),
+
+	/// UTF-8 encoding error.
+	InvalidUtf8(usize),
 }
 
 impl<E> Error<E> {
@@ -284,6 +297,7 @@ impl<E> Error<E> {
 			Self::InvalidUnicodeCodePoint(span, _) => span.start(),
 			Self::MissingLowSurrogate(span, _) => span.start(),
 			Self::InvalidLowSurrogate(span, _, _) => span.start(),
+			Self::InvalidUtf8(p) => *p,
 		}
 	}
 
@@ -294,6 +308,20 @@ impl<E> Error<E> {
 			Self::InvalidUnicodeCodePoint(span, _) => *span,
 			Self::MissingLowSurrogate(span, _) => *span,
 			Self::InvalidLowSurrogate(span, _, _) => *span,
+			Self::InvalidUtf8(p) => Span::new(*p, *p),
+		}
+	}
+}
+
+impl Error<io::Error> {
+	fn io_into_utf8(self) -> Error {
+		match self {
+			Self::Stream(p, _) => Error::InvalidUtf8(p),
+			Self::Unexpected(p, e) => Error::Unexpected(p, e),
+			Self::InvalidUnicodeCodePoint(s, e) => Error::InvalidUnicodeCodePoint(s, e),
+			Self::MissingLowSurrogate(s, e) => Error::MissingLowSurrogate(s, e),
+			Self::InvalidLowSurrogate(s, a, b) => Error::InvalidLowSurrogate(s, a, b),
+			Self::InvalidUtf8(p) => Error::InvalidUtf8(p),
 		}
 	}
 }
@@ -307,6 +335,7 @@ impl<E: fmt::Display> fmt::Display for Error<E> {
 			Self::InvalidUnicodeCodePoint(_, c) => write!(f, "invalid Unicode code point {:x}", *c),
 			Self::MissingLowSurrogate(_, _) => write!(f, "missing low surrogate"),
 			Self::InvalidLowSurrogate(_, _, _) => write!(f, "invalid low surrogate"),
+			Self::InvalidUtf8(_) => write!(f, "invalid UTF-8"),
 		}
 	}
 }
