@@ -37,7 +37,7 @@
 //! ```
 pub use json_number::{InvalidNumber, Number};
 use smallvec::SmallVec;
-use std::fmt;
+use std::{fmt, str::FromStr};
 
 pub mod code_map;
 pub mod object;
@@ -539,6 +539,14 @@ impl From<Array> for Value {
 impl From<Object> for Value {
 	fn from(o: Object) -> Self {
 		Self::Object(o)
+	}
+}
+
+impl FromStr for Value {
+	type Err = parse::Error;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		Ok(Self::parse_str(s)?.0)
 	}
 }
 
