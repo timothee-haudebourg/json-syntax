@@ -39,6 +39,7 @@ pub use json_number::{InvalidNumber, Number};
 use smallvec::SmallVec;
 use std::{fmt, str::FromStr};
 
+pub mod array;
 pub mod code_map;
 pub mod object;
 pub mod parse;
@@ -49,6 +50,8 @@ pub mod print;
 pub use print::Print;
 mod convert;
 mod macros;
+mod try_from;
+pub use try_from::*;
 
 pub mod number {
 	pub use json_number::Buffer;
@@ -71,8 +74,7 @@ pub const SMALL_STRING_CAPACITY: usize = 16;
 /// String.
 pub type String = smallstr::SmallString<[u8; SMALL_STRING_CAPACITY]>;
 
-/// Array.
-pub type Array = Vec<Value>;
+pub use array::Array;
 
 pub use object::Object;
 
@@ -96,6 +98,38 @@ pub enum Kind {
 	Object,
 }
 
+impl std::ops::BitOr for Kind {
+	type Output = KindSet;
+
+	fn bitor(self, other: Self) -> KindSet {
+		KindSet::from(self) | KindSet::from(other)
+	}
+}
+
+impl std::ops::BitOr<KindSet> for Kind {
+	type Output = KindSet;
+
+	fn bitor(self, other: KindSet) -> KindSet {
+		KindSet::from(self) | other
+	}
+}
+
+impl std::ops::BitAnd for Kind {
+	type Output = KindSet;
+
+	fn bitand(self, other: Self) -> KindSet {
+		KindSet::from(self) & KindSet::from(other)
+	}
+}
+
+impl std::ops::BitAnd<KindSet> for Kind {
+	type Output = KindSet;
+
+	fn bitand(self, other: KindSet) -> KindSet {
+		KindSet::from(self) & other
+	}
+}
+
 impl fmt::Display for Kind {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
@@ -107,6 +141,180 @@ impl fmt::Display for Kind {
 			Self::Object => write!(f, "object"),
 		}
 	}
+}
+
+macro_rules! kind_set {
+	($($id:ident ($const:ident): $mask:literal),*) => {
+		#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+		pub struct KindSet(u8);
+
+		impl KindSet {
+			$(
+				pub const $const: Self = Self($mask);
+			)*
+
+			pub fn len(&self) -> usize {
+				self.0.count_ones() as usize
+			}
+
+			pub fn is_empty(&self) -> bool {
+				self.0 == 0
+			}
+
+			pub fn iter(&self) -> KindSetIter {
+				KindSetIter(self.0)
+			}
+		}
+
+		impl std::ops::BitOr<Kind> for KindSet {
+			type Output = Self;
+
+			fn bitor(self, other: Kind) -> Self {
+				match other {
+					$(
+						Kind::$id => Self(self.0 | $mask)
+					),*
+				}
+			}
+		}
+
+		impl std::ops::BitOrAssign<Kind> for KindSet {
+			fn bitor_assign(&mut self, other: Kind) {
+				match other {
+					$(
+						Kind::$id => self.0 |= $mask
+					),*
+				}
+			}
+		}
+
+		impl std::ops::BitOr for KindSet {
+			type Output = Self;
+
+			fn bitor(self, other: Self) -> Self {
+				Self(self.0 | other.0)
+			}
+		}
+
+		impl std::ops::BitOrAssign for KindSet {
+			fn bitor_assign(&mut self, other: Self) {
+				self.0 |= other.0
+			}
+		}
+
+		impl std::ops::BitAnd<Kind> for KindSet {
+			type Output = Self;
+
+			fn bitand(self, other: Kind) -> Self {
+				match other {
+					$(
+						Kind::$id => Self(self.0 & $mask)
+					),*
+				}
+			}
+		}
+
+		impl std::ops::BitAndAssign<Kind> for KindSet {
+			fn bitand_assign(&mut self, other: Kind) {
+				match other {
+					$(
+						Kind::$id => self.0 &= $mask
+					),*
+				}
+			}
+		}
+
+		impl std::ops::BitAnd for KindSet {
+			type Output = Self;
+
+			fn bitand(self, other: Self) -> Self {
+				Self(self.0 & other.0)
+			}
+		}
+
+		impl std::ops::BitAndAssign for KindSet {
+			fn bitand_assign(&mut self, other: Self) {
+				self.0 &= other.0
+			}
+		}
+
+		impl From<Kind> for KindSet {
+			fn from(value: Kind) -> Self {
+				match value {
+					$(
+						Kind::$id => Self($mask)
+					),*
+				}
+			}
+		}
+
+		impl<'a> IntoIterator for &'a KindSet {
+			type IntoIter = KindSetIter;
+			type Item = Kind;
+
+			fn into_iter(self) -> KindSetIter {
+				self.iter()
+			}
+		}
+
+		impl IntoIterator for KindSet {
+			type IntoIter = KindSetIter;
+			type Item = Kind;
+
+			fn into_iter(self) -> KindSetIter {
+				self.iter()
+			}
+		}
+
+		impl fmt::Display for KindSet {
+			fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+				for (i, kind) in self.into_iter().enumerate() {
+					if i > 0 {
+						f.write_str(", ")?;
+					}
+
+					kind.fmt(f)?;
+				}
+
+				Ok(())
+			}
+		}
+
+		#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+		pub struct KindSetIter(u8);
+
+		impl Iterator for KindSetIter {
+			type Item = Kind;
+
+			fn size_hint(&self) -> (usize, Option<usize>) {
+				let len = self.0.count_ones() as usize;
+				(len, Some(len))
+			}
+
+			fn next(&mut self) -> Option<Kind> {
+				$(
+					if self.0 & $mask != 0 {
+						self.0 &= !$mask;
+						return Some(Kind::$id)
+					}
+				)*
+
+				None
+			}
+		}
+
+		impl std::iter::FusedIterator for KindSetIter {}
+		impl std::iter::ExactSizeIterator for KindSetIter {}
+	};
+}
+
+kind_set! {
+	Null (NULL):       0b000001,
+	Boolean (BOOLEAN): 0b000010,
+	Number (NUMBER):   0b000100,
+	String (STRING):   0b001000,
+	Array (ARRAY):     0b010000,
+	Object (OBJECT):   0b100000
 }
 
 /// JSON Value.
