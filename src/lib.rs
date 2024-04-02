@@ -39,6 +39,7 @@ pub use json_number::{InvalidNumber, Number};
 use smallvec::SmallVec;
 use std::{fmt, str::FromStr};
 
+pub mod array;
 pub mod code_map;
 pub mod object;
 pub mod parse;
@@ -47,8 +48,12 @@ pub use code_map::CodeMap;
 pub use parse::Parse;
 pub mod print;
 pub use print::Print;
+pub mod kind;
+pub use kind::{Kind, KindSet};
 mod convert;
 mod macros;
+mod try_from;
+pub use try_from::*;
 
 pub mod number {
 	pub use json_number::Buffer;
@@ -71,8 +76,7 @@ pub const SMALL_STRING_CAPACITY: usize = 16;
 /// String.
 pub type String = smallstr::SmallString<[u8; SMALL_STRING_CAPACITY]>;
 
-/// Array.
-pub type Array = Vec<Value>;
+pub use array::Array;
 
 pub use object::Object;
 
@@ -84,30 +88,6 @@ pub const NUMBER_CAPACITY: usize = SMALL_STRING_CAPACITY;
 
 /// Number buffer.
 pub type NumberBuf = json_number::SmallNumberBuf<NUMBER_CAPACITY>;
-
-/// Value kind.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub enum Kind {
-	Null,
-	Boolean,
-	Number,
-	String,
-	Array,
-	Object,
-}
-
-impl fmt::Display for Kind {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			Self::Null => write!(f, "null"),
-			Self::Boolean => write!(f, "boolean"),
-			Self::Number => write!(f, "number"),
-			Self::String => write!(f, "string"),
-			Self::Array => write!(f, "array"),
-			Self::Object => write!(f, "object"),
-		}
-	}
-}
 
 /// JSON Value.
 ///

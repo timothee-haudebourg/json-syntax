@@ -1,4 +1,5 @@
-use crate::{FragmentRef, UnorderedEq, UnorderedPartialEq, Value};
+use crate::code_map::Mapped;
+use crate::{CodeMap, FragmentRef, UnorderedEq, UnorderedPartialEq, Value};
 use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{Hash, Hasher};
@@ -18,17 +19,58 @@ pub const KEY_CAPACITY: usize = 16;
 pub type Key = smallstr::SmallString<[u8; KEY_CAPACITY]>;
 
 /// Object entry.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct Entry {
-	pub key: Key,
-	pub value: Value,
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct Entry<K = Key, V = Value> {
+	pub key: K,
+	pub value: V,
 }
 
-impl Entry {
-	pub fn new(key: Key, value: Value) -> Self {
+impl<K, V> Entry<K, V> {
+	pub fn new(key: K, value: V) -> Self {
 		Self { key, value }
 	}
 
+	pub fn as_key(&self) -> &K {
+		&self.key
+	}
+
+	pub fn as_value(&self) -> &V {
+		&self.value
+	}
+
+	pub fn into_key(self) -> K {
+		self.key
+	}
+
+	pub fn into_value(self) -> V {
+		self.value
+	}
+
+	pub fn as_pair(&self) -> (&K, &V) {
+		(&self.key, &self.value)
+	}
+
+	pub fn into_pair(self) -> (K, V) {
+		(self.key, self.value)
+	}
+
+	pub fn as_ref(&self) -> Entry<&K, &V> {
+		Entry::new(&self.key, &self.value)
+	}
+
+	pub fn into_mapped(
+		self,
+		key_offset: usize,
+		value_offset: usize,
+	) -> Entry<Mapped<K>, Mapped<V>> {
+		Entry::new(
+			Mapped::new(key_offset, self.key),
+			Mapped::new(value_offset, self.value),
+		)
+	}
+}
+
+impl Entry {
 	pub fn get_fragment(&self, index: usize) -> Result<FragmentRef, usize> {
 		match index {
 			0 => Ok(FragmentRef::Entry(self)),
@@ -36,31 +78,13 @@ impl Entry {
 			_ => self.value.get_fragment(index - 2),
 		}
 	}
-
-	pub fn as_key(&self) -> &Key {
-		&self.key
-	}
-
-	pub fn as_value(&self) -> &Value {
-		&self.value
-	}
-
-	pub fn into_key(self) -> Key {
-		self.key
-	}
-
-	pub fn into_value(self) -> Value {
-		self.value
-	}
-
-	pub fn as_pair(&self) -> (&Key, &Value) {
-		(&self.key, &self.value)
-	}
-
-	pub fn into_pair(self) -> (Key, Value) {
-		(self.key, self.value)
-	}
 }
+
+pub type MappedEntry<'a> = Mapped<Entry<Mapped<&'a Key>, Mapped<&'a Value>>>;
+
+pub type IndexedMappedEntry<'a> = (usize, MappedEntry<'a>);
+
+pub type IndexedMappedValue<'a> = (usize, Mapped<&'a Value>);
 
 /// Object.
 #[derive(Clone)]
@@ -122,12 +146,30 @@ impl Object {
 		&self.entries
 	}
 
-	pub fn iter(&self) -> core::slice::Iter<Entry> {
+	pub fn iter(&self) -> Iter {
 		self.entries.iter()
 	}
 
 	pub fn iter_mut(&mut self) -> IterMut {
 		IterMut(self.entries.iter_mut())
+	}
+
+	pub fn iter_mapped<'m>(&self, code_map: &'m CodeMap, offset: usize) -> IterMapped<'_, 'm> {
+		IterMapped {
+			entries: self.entries.iter(),
+			code_map,
+			offset: offset + 1,
+		}
+	}
+
+	/// Checks if this object contains the given key.
+	///
+	/// Runs in `O(1)` (average).
+	pub fn contains_key<Q: ?Sized>(&self, key: &Q) -> bool
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		self.indexes.get(&self.entries, key).is_some()
 	}
 
 	/// Returns an iterator over the values matching the given key.
@@ -254,7 +296,7 @@ impl Object {
 		}
 	}
 
-	/// Returns an iterator over the entries matching the given key.
+	/// Returns an iterator over the values matching the given key.
 	///
 	/// Runs in `O(1)` (average).
 	pub fn get_with_index<Q: ?Sized>(&self, key: &Q) -> ValuesWithIndex
@@ -359,6 +401,212 @@ impl Object {
 			.get(&self.entries, key)
 			.map(IntoIterator::into_iter)
 			.unwrap_or_default()
+	}
+
+	/// Returns an iterator over the mapped entries matching the given key.
+	///
+	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
+	/// the entry fragment offset.
+	pub fn get_mapped_entries<'m, Q: ?Sized>(
+		&self,
+		code_map: &'m CodeMap,
+		offset: usize,
+		key: &Q,
+	) -> MappedEntries<'_, 'm>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let indexes = self
+			.indexes
+			.get(&self.entries, key)
+			.map(IntoIterator::into_iter)
+			.unwrap_or_default();
+		MappedEntries {
+			indexes,
+			object: self,
+			code_map,
+			offset: offset + 1,
+			last_index: 0,
+		}
+	}
+
+	/// Returns the unique mapped entry matching the given key.
+	///
+	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
+	/// the entry fragment offset.
+	pub fn get_unique_mapped_entry<Q: ?Sized>(
+		&self,
+		code_map: &CodeMap,
+		offset: usize,
+		key: &Q,
+	) -> Result<Option<MappedEntry>, Duplicate<MappedEntry>>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let mut entries = self.get_mapped_entries(code_map, offset, key);
+
+		match entries.next() {
+			Some(entry) => match entries.next() {
+				Some(duplicate) => Err(Duplicate(entry, duplicate)),
+				None => Ok(Some(entry)),
+			},
+			None => Ok(None),
+		}
+	}
+
+	/// Returns an iterator over the mapped entries matching the given key, with
+	/// their index.
+	///
+	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
+	/// the entry fragment offset.
+	pub fn get_mapped_entries_with_index<'m, Q: ?Sized>(
+		&self,
+		code_map: &'m CodeMap,
+		offset: usize,
+		key: &Q,
+	) -> MappedEntriesWithIndex<'_, 'm>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let indexes = self
+			.indexes
+			.get(&self.entries, key)
+			.map(IntoIterator::into_iter)
+			.unwrap_or_default();
+		MappedEntriesWithIndex {
+			indexes,
+			object: self,
+			code_map,
+			offset: offset + 1,
+			last_index: 0,
+		}
+	}
+
+	/// Returns the unique mapped entry matching the given key, with its index.
+	///
+	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
+	/// the entry fragment offset.
+	pub fn get_unique_mapped_entry_with_index<Q: ?Sized>(
+		&self,
+		code_map: &CodeMap,
+		offset: usize,
+		key: &Q,
+	) -> Result<Option<IndexedMappedEntry>, Duplicate<IndexedMappedEntry>>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let mut entries = self.get_mapped_entries_with_index(code_map, offset, key);
+
+		match entries.next() {
+			Some(entry) => match entries.next() {
+				Some(duplicate) => Err(Duplicate(entry, duplicate)),
+				None => Ok(Some(entry)),
+			},
+			None => Ok(None),
+		}
+	}
+
+	/// Returns an iterator over the mapped values matching the given key.
+	///
+	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
+	/// the entry fragment offset.
+	pub fn get_mapped<'m, Q: ?Sized>(
+		&self,
+		code_map: &'m CodeMap,
+		offset: usize,
+		key: &Q,
+	) -> MappedValues<'_, 'm>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let indexes = self
+			.indexes
+			.get(&self.entries, key)
+			.map(IntoIterator::into_iter)
+			.unwrap_or_default();
+		MappedValues {
+			indexes,
+			object: self,
+			code_map,
+			offset: offset + 1,
+			last_index: 0,
+		}
+	}
+
+	/// Returns the unique mapped values matching the given key.
+	///
+	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
+	/// the entry fragment offset.
+	pub fn get_unique_mapped<Q: ?Sized>(
+		&self,
+		code_map: &CodeMap,
+		offset: usize,
+		key: &Q,
+	) -> Result<Option<Mapped<&Value>>, Duplicate<Mapped<&Value>>>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let mut entries = self.get_mapped(code_map, offset, key);
+
+		match entries.next() {
+			Some(entry) => match entries.next() {
+				Some(duplicate) => Err(Duplicate(entry, duplicate)),
+				None => Ok(Some(entry)),
+			},
+			None => Ok(None),
+		}
+	}
+
+	/// Returns an iterator over the mapped values matching the given key, with
+	/// their index.
+	///
+	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
+	/// the entry fragment offset.
+	pub fn get_mapped_with_index<'m, Q: ?Sized>(
+		&self,
+		code_map: &'m CodeMap,
+		offset: usize,
+		key: &Q,
+	) -> MappedValuesWithIndex<'_, 'm>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let indexes = self
+			.indexes
+			.get(&self.entries, key)
+			.map(IntoIterator::into_iter)
+			.unwrap_or_default();
+		MappedValuesWithIndex {
+			indexes,
+			object: self,
+			code_map,
+			offset: offset + 1,
+			last_index: 0,
+		}
+	}
+
+	/// Returns the unique mapped values matching the given key, with its index.
+	///
+	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
+	/// the entry fragment offset.
+	pub fn get_unique_mapped_with_index<Q: ?Sized>(
+		&self,
+		code_map: &CodeMap,
+		offset: usize,
+		key: &Q,
+	) -> Result<Option<IndexedMappedValue>, Duplicate<IndexedMappedValue>>
+	where
+		Q: Hash + Equivalent<Key>,
+	{
+		let mut entries = self.get_mapped_with_index(code_map, offset, key);
+
+		match entries.next() {
+			Some(entry) => match entries.next() {
+				Some(duplicate) => Err(Duplicate(entry, duplicate)),
+				None => Ok(Some(entry)),
+			},
+			None => Ok(None),
+		}
 	}
 
 	pub fn first(&self) -> Option<&Entry> {
@@ -527,6 +775,8 @@ impl Object {
 	}
 }
 
+pub type Iter<'a> = core::slice::Iter<'a, Entry>;
+
 pub struct IterMut<'a>(std::slice::IterMut<'a, Entry>);
 
 impl<'a> Iterator for IterMut<'a> {
@@ -534,6 +784,24 @@ impl<'a> Iterator for IterMut<'a> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		self.0.next().map(|entry| (&entry.key, &mut entry.value))
+	}
+}
+
+pub struct IterMapped<'a, 'm> {
+	entries: std::slice::Iter<'a, Entry>,
+	code_map: &'m CodeMap,
+	offset: usize,
+}
+
+impl<'a, 'm> Iterator for IterMapped<'a, 'm> {
+	type Item = MappedEntry<'a>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		self.entries.next().map(|e| {
+			let offset = self.offset;
+			self.offset += 2 + self.code_map.get(self.offset + 2).unwrap().volume;
+			Mapped::new(offset, e.as_ref().into_mapped(offset + 1, offset + 2))
+		})
 	}
 }
 
@@ -789,6 +1057,97 @@ entries_iter_mut! {
 	}
 }
 
+macro_rules! mapped_entries_iter {
+	($($id:ident <$lft:lifetime> {
+		type Item = $item:ty ;
+
+		fn next(&mut $self:ident, $index:ident) { $e:expr }
+	})*) => {
+		$(
+			pub struct $id<$lft, 'm> {
+				indexes: Indexes<$lft>,
+				object: &$lft Object,
+				code_map: &'m CodeMap,
+				offset: usize,
+				last_index: usize
+			}
+
+			impl<$lft, 'm> Iterator for $id<$lft, 'm> {
+				type Item = $item;
+
+				fn next(&mut $self) -> Option<Self::Item> {
+					$self.indexes.next().map(|$index| {
+						while $self.last_index < $index {
+							$self.last_index += 1;
+							$self.offset += 2 + $self.code_map.get($self.offset+2).unwrap().volume;
+						}
+
+						$e
+					})
+				}
+			}
+		)*
+	};
+}
+
+mapped_entries_iter! {
+	MappedEntries<'a> {
+		type Item = MappedEntry<'a>;
+
+		fn next(&mut self, index) {
+			Mapped::new(
+				self.offset,
+				self.object.entries[index].as_ref().into_mapped(
+					self.offset+1,
+					self.offset+2
+				)
+			)
+		}
+	}
+
+	MappedEntriesWithIndex<'a> {
+		type Item = (usize, MappedEntry<'a>);
+
+		fn next(&mut self, index) {
+			(
+				index,
+				Mapped::new(
+					self.offset,
+					self.object.entries[index].as_ref().into_mapped(
+						self.offset+1,
+						self.offset+2
+					)
+				)
+			)
+		}
+	}
+
+	MappedValues<'a> {
+		type Item = Mapped<&'a Value>;
+
+		fn next(&mut self, index) {
+			Mapped::new(
+				self.offset+2,
+				&self.object.entries[index].value
+			)
+		}
+	}
+
+	MappedValuesWithIndex<'a> {
+		type Item = (usize, Mapped<&'a Value>);
+
+		fn next(&mut self, index) {
+			(
+				index,
+				Mapped::new(
+					self.offset+2,
+					&self.object.entries[index].value
+				)
+			)
+		}
+	}
+}
+
 pub struct RemovedByInsertion<'a> {
 	index: usize,
 	first: Option<Entry>,
@@ -960,5 +1319,36 @@ mod tests {
 		b.push("c".into(), Value::Null);
 
 		assert_eq!(a, b);
+	}
+
+	#[test]
+	fn mapped_entries() {
+		use crate::Parse;
+		let (json, code_map) = crate::Value::parse_str(
+			r#"{ "0": [null, null], "1": { "foo": 0, "bar": 1 }, "0": null }"#,
+		)
+		.unwrap();
+		let object = json.into_object().unwrap();
+
+		let offsets: Vec<_> = object
+			.get_mapped_entries(&code_map, 0, "0")
+			.map(|e| (e.offset, e.value.key.offset, e.value.value.offset))
+			.collect();
+
+		assert_eq!(offsets, [(1, 2, 3), (15, 16, 17)]);
+
+		let offsets: Vec<_> = object
+			.get_mapped_entries(&code_map, 0, "1")
+			.map(|e| (e.offset, e.value.key.offset, e.value.value.offset))
+			.collect();
+
+		assert_eq!(offsets, [(6, 7, 8)]);
+
+		let offsets: Vec<_> = object
+			.iter_mapped(&code_map, 0)
+			.map(|e| (e.offset, e.value.key.offset, e.value.value.offset))
+			.collect();
+
+		assert_eq!(offsets, [(1, 2, 3), (6, 7, 8), (15, 16, 17)]);
 	}
 }

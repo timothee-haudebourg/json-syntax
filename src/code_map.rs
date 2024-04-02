@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{borrow::Borrow, ops::Deref};
 
 use locspan::Span;
@@ -86,6 +87,30 @@ pub struct Entry {
 impl Entry {
 	pub fn new(span: Span, volume: usize) -> Self {
 		Self { span, volume }
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Mapped<T> {
+	pub offset: usize,
+	pub value: T,
+}
+
+impl<T> Mapped<T> {
+	pub fn new(offset: usize, value: T) -> Self {
+		Self { offset, value }
+	}
+}
+
+impl<T: fmt::Display> fmt::Display for Mapped<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.value.fmt(f)
+	}
+}
+
+impl<T: 'static + std::error::Error> std::error::Error for Mapped<T> {
+	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+		Some(&self.value)
 	}
 }
 
