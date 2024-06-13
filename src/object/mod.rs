@@ -165,9 +165,9 @@ impl Object {
 	/// Checks if this object contains the given key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn contains_key<Q: ?Sized>(&self, key: &Q) -> bool
+	pub fn contains_key<Q>(&self, key: &Q) -> bool
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		self.indexes.get(&self.entries, key).is_some()
 	}
@@ -175,9 +175,9 @@ impl Object {
 	/// Returns an iterator over the values matching the given key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get<Q: ?Sized>(&self, key: &Q) -> Values
+	pub fn get<Q>(&self, key: &Q) -> Values
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let indexes = self
 			.indexes
@@ -193,9 +193,9 @@ impl Object {
 	/// Returns an iterator over the values matching the given key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get_mut<Q: ?Sized>(&mut self, key: &Q) -> ValuesMut
+	pub fn get_mut<Q>(&mut self, key: &Q) -> ValuesMut
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let indexes = self
 			.indexes
@@ -213,9 +213,9 @@ impl Object {
 	/// Returns an error if multiple entries match the key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get_unique<Q: ?Sized>(&self, key: &Q) -> Result<Option<&Value>, Duplicate<&Entry>>
+	pub fn get_unique<Q>(&self, key: &Q) -> Result<Option<&Value>, Duplicate<&Entry>>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let mut entries = self.get_entries(key);
 
@@ -233,12 +233,9 @@ impl Object {
 	/// Returns an error if multiple entries match the key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get_unique_mut<Q: ?Sized>(
-		&mut self,
-		key: &Q,
-	) -> Result<Option<&mut Value>, Duplicate<&Entry>>
+	pub fn get_unique_mut<Q>(&mut self, key: &Q) -> Result<Option<&mut Value>, Duplicate<&Entry>>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let index = {
 			let mut entries = self.get_entries_with_index(key);
@@ -261,9 +258,9 @@ impl Object {
 	/// Returns an iterator over the entries matching the given key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get_entries<Q: ?Sized>(&self, key: &Q) -> Entries
+	pub fn get_entries<Q>(&self, key: &Q) -> Entries
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let indexes = self
 			.indexes
@@ -281,9 +278,9 @@ impl Object {
 	/// Returns an error if multiple entries match the key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get_unique_entry<Q: ?Sized>(&self, key: &Q) -> Result<Option<&Entry>, Duplicate<&Entry>>
+	pub fn get_unique_entry<Q>(&self, key: &Q) -> Result<Option<&Entry>, Duplicate<&Entry>>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let mut entries = self.get_entries(key);
 
@@ -299,9 +296,9 @@ impl Object {
 	/// Returns an iterator over the values matching the given key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get_with_index<Q: ?Sized>(&self, key: &Q) -> ValuesWithIndex
+	pub fn get_with_index<Q>(&self, key: &Q) -> ValuesWithIndex
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let indexes = self
 			.indexes
@@ -317,9 +314,9 @@ impl Object {
 	/// Returns an iterator over the entries matching the given key.
 	///
 	/// Runs in `O(1)` (average).
-	pub fn get_entries_with_index<Q: ?Sized>(&self, key: &Q) -> EntriesWithIndex
+	pub fn get_entries_with_index<Q>(&self, key: &Q) -> EntriesWithIndex
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let indexes = self
 			.indexes
@@ -334,9 +331,9 @@ impl Object {
 
 	/// Returns the (first) value associated to `key`, or insert a `key`-`value`
 	/// entry where `value` is returned by the given function `f`.
-	pub fn get_or_insert_with<Q: ?Sized>(&mut self, key: &Q, f: impl FnOnce() -> Value) -> &Value
+	pub fn get_or_insert_with<Q>(&mut self, key: &Q, f: impl FnOnce() -> Value) -> &Value
 	where
-		Q: Hash + Equivalent<Key> + ToOwned,
+		Q: ?Sized + Hash + Equivalent<Key> + ToOwned,
 		Q::Owned: Into<Key>,
 	{
 		let index = match self.index_of(key) {
@@ -354,13 +351,9 @@ impl Object {
 	/// Returns a mutable reference to the (first) value associated to `key`, or
 	/// insert a `key`-`value` entry where `value` is returned by the given
 	/// function `f`.
-	pub fn get_mut_or_insert_with<Q: ?Sized>(
-		&mut self,
-		key: &Q,
-		f: impl FnOnce() -> Value,
-	) -> &mut Value
+	pub fn get_mut_or_insert_with<Q>(&mut self, key: &Q, f: impl FnOnce() -> Value) -> &mut Value
 	where
-		Q: Hash + Equivalent<Key> + ToOwned,
+		Q: ?Sized + Hash + Equivalent<Key> + ToOwned,
 		Q::Owned: Into<Key>,
 	{
 		let index = match self.index_of(key) {
@@ -375,27 +368,27 @@ impl Object {
 		&mut self.entries[index].value
 	}
 
-	pub fn index_of<Q: ?Sized>(&self, key: &Q) -> Option<usize>
+	pub fn index_of<Q>(&self, key: &Q) -> Option<usize>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		self.indexes
 			.get(&self.entries, key)
 			.map(index_map::Indexes::first)
 	}
 
-	pub fn redundant_index_of<Q: ?Sized>(&self, key: &Q) -> Option<usize>
+	pub fn redundant_index_of<Q>(&self, key: &Q) -> Option<usize>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		self.indexes
 			.get(&self.entries, key)
 			.and_then(index_map::Indexes::redundant)
 	}
 
-	pub fn indexes_of<Q: ?Sized>(&self, key: &Q) -> Indexes
+	pub fn indexes_of<Q>(&self, key: &Q) -> Indexes
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		self.indexes
 			.get(&self.entries, key)
@@ -407,14 +400,14 @@ impl Object {
 	///
 	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
 	/// the entry fragment offset.
-	pub fn get_mapped_entries<'m, Q: ?Sized>(
+	pub fn get_mapped_entries<'m, Q>(
 		&self,
 		code_map: &'m CodeMap,
 		offset: usize,
 		key: &Q,
 	) -> MappedEntries<'_, 'm>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let indexes = self
 			.indexes
@@ -434,14 +427,14 @@ impl Object {
 	///
 	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
 	/// the entry fragment offset.
-	pub fn get_unique_mapped_entry<Q: ?Sized>(
+	pub fn get_unique_mapped_entry<Q>(
 		&self,
 		code_map: &CodeMap,
 		offset: usize,
 		key: &Q,
 	) -> Result<Option<MappedEntry>, Duplicate<MappedEntry>>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let mut entries = self.get_mapped_entries(code_map, offset, key);
 
@@ -459,14 +452,14 @@ impl Object {
 	///
 	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
 	/// the entry fragment offset.
-	pub fn get_mapped_entries_with_index<'m, Q: ?Sized>(
+	pub fn get_mapped_entries_with_index<'m, Q>(
 		&self,
 		code_map: &'m CodeMap,
 		offset: usize,
 		key: &Q,
 	) -> MappedEntriesWithIndex<'_, 'm>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let indexes = self
 			.indexes
@@ -486,14 +479,14 @@ impl Object {
 	///
 	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
 	/// the entry fragment offset.
-	pub fn get_unique_mapped_entry_with_index<Q: ?Sized>(
+	pub fn get_unique_mapped_entry_with_index<Q>(
 		&self,
 		code_map: &CodeMap,
 		offset: usize,
 		key: &Q,
 	) -> Result<Option<IndexedMappedEntry>, Duplicate<IndexedMappedEntry>>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let mut entries = self.get_mapped_entries_with_index(code_map, offset, key);
 
@@ -510,14 +503,14 @@ impl Object {
 	///
 	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
 	/// the entry fragment offset.
-	pub fn get_mapped<'m, Q: ?Sized>(
+	pub fn get_mapped<'m, Q>(
 		&self,
 		code_map: &'m CodeMap,
 		offset: usize,
 		key: &Q,
 	) -> MappedValues<'_, 'm>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let indexes = self
 			.indexes
@@ -537,14 +530,14 @@ impl Object {
 	///
 	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
 	/// the entry fragment offset.
-	pub fn get_unique_mapped<Q: ?Sized>(
+	pub fn get_unique_mapped<Q>(
 		&self,
 		code_map: &CodeMap,
 		offset: usize,
 		key: &Q,
 	) -> Result<Option<Mapped<&Value>>, Duplicate<Mapped<&Value>>>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let mut entries = self.get_mapped(code_map, offset, key);
 
@@ -562,14 +555,14 @@ impl Object {
 	///
 	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
 	/// the entry fragment offset.
-	pub fn get_mapped_with_index<'m, Q: ?Sized>(
+	pub fn get_mapped_with_index<'m, Q>(
 		&self,
 		code_map: &'m CodeMap,
 		offset: usize,
 		key: &Q,
 	) -> MappedValuesWithIndex<'_, 'm>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let indexes = self
 			.indexes
@@ -589,14 +582,14 @@ impl Object {
 	///
 	/// Runs in `O(n)` (average). `O(1)` to find the entry, `O(n)` to compute
 	/// the entry fragment offset.
-	pub fn get_unique_mapped_with_index<Q: ?Sized>(
+	pub fn get_unique_mapped_with_index<Q>(
 		&self,
 		code_map: &CodeMap,
 		offset: usize,
 		key: &Q,
 	) -> Result<Option<IndexedMappedValue>, Duplicate<IndexedMappedValue>>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let mut entries = self.get_mapped_with_index(code_map, offset, key);
 
@@ -712,9 +705,9 @@ impl Object {
 	/// Remove all entries associated to the given key.
 	///
 	/// Runs in `O(n)` time (average).
-	pub fn remove<'q, Q: ?Sized>(&mut self, key: &'q Q) -> RemovedEntries<'_, 'q, Q>
+	pub fn remove<'q, Q>(&mut self, key: &'q Q) -> RemovedEntries<'_, 'q, Q>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		RemovedEntries { key, object: self }
 	}
@@ -724,9 +717,9 @@ impl Object {
 	/// Returns an error if multiple entries match the key.
 	///
 	/// Runs in `O(n)` time (average).
-	pub fn remove_unique<Q: ?Sized>(&mut self, key: &Q) -> Result<Option<Entry>, Duplicate<Entry>>
+	pub fn remove_unique<Q>(&mut self, key: &Q) -> Result<Option<Entry>, Duplicate<Entry>>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let mut entries = self.remove(key);
 

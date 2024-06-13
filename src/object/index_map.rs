@@ -180,9 +180,9 @@ impl<S> IndexMap<S> {
 }
 
 impl<S: BuildHasher> IndexMap<S> {
-	pub fn get<Q: ?Sized>(&self, entries: &[Entry], key: &Q) -> Option<&Indexes>
+	pub fn get<Q>(&self, entries: &[Entry], key: &Q) -> Option<&Indexes>
 	where
-		Q: Hash + Equivalent<Key>,
+		Q: ?Sized + Hash + Equivalent<Key>,
 	{
 		let hash = self.hash_builder.hash_one(key);
 		self.table.get(hash, equivalent_key(entries, key))

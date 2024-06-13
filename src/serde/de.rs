@@ -174,8 +174,14 @@ impl<'de> Deserialize<'de> for Value {
 
 				match visitor.next_key()? {
 					Some(MapTag::Number) => {
-						let value = visitor.next_value()?;
-						Ok(Value::Number(value))
+						let value: String = visitor.next_value()?;
+						NumberBuf::new(value.into_bytes().into())
+							.map(Value::Number)
+							.map_err(|json_number::InvalidNumber(bytes)| {
+								serde::de::Error::custom(json_number::InvalidNumber(
+									String::from_utf8(bytes.into_vec()).unwrap(),
+								))
+							})
 					}
 					Some(MapTag::None(key)) => {
 						let mut object = Object::new();
