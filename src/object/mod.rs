@@ -1045,7 +1045,7 @@ entries_iter_mut! {
 
 		fn next(&mut self, index) {
 			// This is safe because there is no aliasing between the values.
-			unsafe { (index, core::mem::transmute(&mut self.entries[index].value)) }
+			unsafe { (index, core::mem::transmute::<&mut Value, &'a mut Value>(&mut self.entries[index].value)) }
 		}
 	}
 }

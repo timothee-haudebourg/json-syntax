@@ -210,6 +210,46 @@ impl<'de> IntoDeserializer<'de, DeserializeError> for Value {
 	}
 }
 
+impl<'de> Deserialize<'de> for Object {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		struct Visitor;
+
+		impl<'de> serde::de::Visitor<'de> for Visitor {
+			type Value = Object;
+
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+				write!(formatter, "a JSON object")
+			}
+
+			fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+			where
+				A: MapAccess<'de>,
+			{
+				let mut object = Object::new();
+
+				while let Some((key, value)) = map.next_entry()? {
+					object.insert(key, value);
+				}
+
+				Ok(object)
+			}
+		}
+
+		deserializer.deserialize_map(Visitor)
+	}
+}
+
+impl<'de> IntoDeserializer<'de, DeserializeError> for Object {
+	type Deserializer = Value;
+
+	fn into_deserializer(self) -> Self::Deserializer {
+		Value::Object(self)
+	}
+}
+
 #[derive(Debug, Clone)]
 pub enum DeserializeError {
 	Custom(String),

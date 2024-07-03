@@ -22,6 +22,9 @@ serde = [ "dep:serde", "json-number/serde", "smallstr/serde" ]
 ## Compatibility layer with the `serde_json` crate.
 serde_json = [ "dep:serde_json", "json-number/serde_json" ]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 json-number = { version = "0.4.8", features = [ "smallnumberbuf" ] }
 smallvec = "1.9"
