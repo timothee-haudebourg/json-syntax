@@ -27,15 +27,15 @@ all-features = true
 
 [dependencies]
 json-number = { version = "0.4", features = [ "smallnumberbuf" ] }
-smallvec = "1.9"
+smallvec = "1.13"
 smallstr = "0.3"
 locspan = "0.8.2"
 locspan-derive = "0.6"
-indexmap = "1.9.1"
+indexmap = "2.6"
 decoded-char = "0.1"
-hashbrown = { version = "0.12.1", features = [ "raw" ] }
+hashbrown = { version = "0.14", features = [ "raw" ] }
 contextual = { version = "0.1.1", optional = true }
-ryu-js = { version = "0.2.2", optional = true }
+ryu-js = { version = "1.0", optional = true }
 serde = { version = "1.0", optional = true }
 serde_json = { version = "1.0", optional = true }
 utf8-decode = "1.0.1"
