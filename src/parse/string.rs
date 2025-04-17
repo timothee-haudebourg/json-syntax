@@ -19,7 +19,7 @@ where
 						(p, Some(c)) => match c.to_digit(16) {
 							Some(h1) => match parser.next_char()? {
 								(p, Some(c)) => match c.to_digit(16) {
-									Some(h0) => Ok(h3 << 12 | h2 << 8 | h1 << 4 | h0),
+									Some(h0) => Ok((h3 << 12) | (h2 << 8) | (h1 << 4) | h0),
 									None => Err(Error::unexpected(p, Some(c))),
 								},
 								(p, unexpected) => Err(Error::unexpected(p, unexpected)),
@@ -83,7 +83,7 @@ impl<A: smallvec::Array<Item = u8>> Parse for SmallString<A> {
 										if (0xdc00..=0xdfff).contains(&codepoint) {
 											let low = codepoint;
 											let codepoint =
-												((high - 0xd800) << 10 | (low - 0xdc00)) + 0x010000;
+												(((high - 0xd800) << 10) | (low - 0xdc00)) + 0x010000;
 											match char::from_u32(codepoint) {
 												Some(c) => c,
 												None => {

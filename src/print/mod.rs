@@ -282,7 +282,7 @@ impl<T: Print, M> Print for locspan::Meta<T, M> {
 	}
 }
 
-impl<'a, T: Print + ?Sized> Print for &'a T {
+impl<T: Print + ?Sized> Print for &T {
 	fn fmt_with(&self, f: &mut fmt::Formatter, options: &Options, indent: usize) -> fmt::Result {
 		(**self).fmt_with(f, options, indent)
 	}
@@ -325,7 +325,7 @@ impl<T: PrintWithSize, M> PrintWithSize for locspan::Meta<T, M> {
 	}
 }
 
-impl<'a, T: PrintWithSize + ?Sized> PrintWithSize for &'a T {
+impl<T: PrintWithSize + ?Sized> PrintWithSize for &T {
 	fn fmt_with_size(
 		&self,
 		f: &mut fmt::Formatter,
@@ -341,7 +341,7 @@ impl<'a, T: PrintWithSize + ?Sized> PrintWithSize for &'a T {
 /// Printed value.
 pub struct Printed<'t, T: ?Sized>(&'t T, Options, usize);
 
-impl<'t, T: Print> fmt::Display for Printed<'t, T> {
+impl<T: Print> fmt::Display for Printed<'_, T> {
 	#[inline(always)]
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		self.0.fmt_with(f, &self.1, self.2)
@@ -651,7 +651,7 @@ impl PrecomputeSize for crate::Value {
 	}
 }
 
-impl<'a, T: PrecomputeSize + ?Sized> PrecomputeSize for &'a T {
+impl<T: PrecomputeSize + ?Sized> PrecomputeSize for &T {
 	fn pre_compute_size(&self, options: &Options, sizes: &mut Vec<Size>) -> Size {
 		(**self).pre_compute_size(options, sizes)
 	}
