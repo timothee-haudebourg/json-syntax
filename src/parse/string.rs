@@ -82,8 +82,8 @@ impl<A: smallvec::Array<Item = u8>> Parse for SmallString<A> {
 									Some((p_high, high)) => {
 										if (0xdc00..=0xdfff).contains(&codepoint) {
 											let low = codepoint;
-											let codepoint =
-												(((high - 0xd800) << 10) | (low - 0xdc00)) + 0x010000;
+											let codepoint = (((high - 0xd800) << 10)
+												| (low - 0xdc00)) + 0x010000;
 											match char::from_u32(codepoint) {
 												Some(c) => c,
 												None => {
