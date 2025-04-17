@@ -620,13 +620,13 @@ impl<'a> FragmentRef<'a> {
 	}
 }
 
-impl<'a> Clone for FragmentRef<'a> {
+impl Clone for FragmentRef<'_> {
 	fn clone(&self) -> Self {
 		*self
 	}
 }
 
-impl<'a> Copy for FragmentRef<'a> {}
+impl Copy for FragmentRef<'_> {}
 
 impl<'a> FragmentRef<'a> {
 	pub fn sub_fragments(&self) -> SubFragments<'a> {
@@ -662,7 +662,7 @@ impl<'a> Iterator for SubFragments<'a> {
 	}
 }
 
-impl<'a> DoubleEndedIterator for SubFragments<'a> {
+impl DoubleEndedIterator for SubFragments<'_> {
 	fn next_back(&mut self) -> Option<Self::Item> {
 		match self {
 			Self::None => None,

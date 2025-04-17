@@ -717,7 +717,7 @@ impl Object {
 	/// Returns an error if multiple entries match the key.
 	///
 	/// Runs in `O(n)` time (average).
-	pub fn remove_unique<Q>(&mut self, key: &Q) -> Result<Option<Entry>, Duplicate<Entry>>
+	pub fn remove_unique<Q>(&mut self, key: &Q) -> Result<Option<Entry>, Box<Duplicate<Entry>>>
 	where
 		Q: ?Sized + Hash + Equivalent<Key>,
 	{
@@ -725,7 +725,7 @@ impl Object {
 
 		match entries.next() {
 			Some(entry) => match entries.next() {
-				Some(duplicate) => Err(Duplicate(entry, duplicate)),
+				Some(duplicate) => Err(Box::new(Duplicate(entry, duplicate))),
 				None => Ok(Some(entry)),
 			},
 			None => Ok(None),
@@ -786,7 +786,7 @@ pub struct IterMapped<'a, 'm> {
 	offset: usize,
 }
 
-impl<'a, 'm> Iterator for IterMapped<'a, 'm> {
+impl<'a> Iterator for IterMapped<'a, '_> {
 	type Item = MappedEntry<'a>;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -938,13 +938,13 @@ pub enum Indexes<'a> {
 	None,
 }
 
-impl<'a> Default for Indexes<'a> {
+impl Default for Indexes<'_> {
 	fn default() -> Self {
 		Self::None
 	}
 }
 
-impl<'a> Iterator for Indexes<'a> {
+impl Iterator for Indexes<'_> {
 	type Item = usize;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -1147,7 +1147,7 @@ pub struct RemovedByInsertion<'a> {
 	object: &'a mut Object,
 }
 
-impl<'a> Iterator for RemovedByInsertion<'a> {
+impl Iterator for RemovedByInsertion<'_> {
 	type Item = Entry;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -1163,7 +1163,7 @@ impl<'a> Iterator for RemovedByInsertion<'a> {
 	}
 }
 
-impl<'a> Drop for RemovedByInsertion<'a> {
+impl Drop for RemovedByInsertion<'_> {
 	fn drop(&mut self) {
 		self.last();
 	}
@@ -1174,7 +1174,7 @@ pub struct RemovedByInsertFront<'a> {
 	object: &'a mut Object,
 }
 
-impl<'a> Iterator for RemovedByInsertFront<'a> {
+impl Iterator for RemovedByInsertFront<'_> {
 	type Item = Entry;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -1190,7 +1190,7 @@ impl<'a> Iterator for RemovedByInsertFront<'a> {
 	}
 }
 
-impl<'a> Drop for RemovedByInsertFront<'a> {
+impl Drop for RemovedByInsertFront<'_> {
 	fn drop(&mut self) {
 		self.last();
 	}
@@ -1204,7 +1204,7 @@ where
 	object: &'a mut Object,
 }
 
-impl<'a, 'q, Q: ?Sized> Iterator for RemovedEntries<'a, 'q, Q>
+impl<Q: ?Sized> Iterator for RemovedEntries<'_, '_, Q>
 where
 	Q: Hash + Equivalent<Key>,
 {
@@ -1217,7 +1217,7 @@ where
 	}
 }
 
-impl<'a, 'q, Q: ?Sized> Drop for RemovedEntries<'a, 'q, Q>
+impl<Q: ?Sized> Drop for RemovedEntries<'_, '_, Q>
 where
 	Q: Hash + Equivalent<Key>,
 {

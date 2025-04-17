@@ -34,7 +34,7 @@ pub struct IterMapped<'a, 'm> {
 	offset: usize,
 }
 
-impl<'a, 'm> Iterator for IterMapped<'a, 'm> {
+impl<'a> Iterator for IterMapped<'a, '_> {
 	type Item = Mapped<&'a Value>;
 
 	fn next(&mut self) -> Option<Self::Item> {
