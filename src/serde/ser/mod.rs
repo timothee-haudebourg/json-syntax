@@ -38,8 +38,8 @@ impl Serialize for Object {
 		use serde::ser::SerializeMap;
 		let mut map = serializer.serialize_map(Some(self.len()))?;
 
-		for entry in self {
-			map.serialize_entry(entry.key.as_str(), &entry.value)?;
+		for (key, value) in self {
+			map.serialize_entry(key.as_str(), value)?;
 		}
 
 		map.end()
@@ -210,7 +210,7 @@ impl serde::Serializer for Serializer {
 		T: ?Sized + Serialize,
 	{
 		let mut obj = Object::new();
-		obj.insert(variant.into(), value.serialize(self)?);
+		obj.insert(variant, value.serialize(self)?);
 		Ok(Value::Object(obj))
 	}
 
@@ -744,7 +744,6 @@ impl serde::ser::SerializeStructVariant for SerializeStructVariant {
 	where
 		T: ?Sized + Serialize,
 	{
-		let key = key.into();
 		self.obj.insert(key, value.serialize(Serializer)?);
 		Ok(())
 	}

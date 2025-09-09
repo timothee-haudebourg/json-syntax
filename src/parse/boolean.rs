@@ -1,12 +1,11 @@
 use super::{Context, Error, Parse, Parser};
 use decoded_char::DecodedChar;
-use locspan::Meta;
 
 impl Parse for bool {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		_context: Context,
-	) -> Result<Meta<Self, usize>, Error<E>>
+	) -> Result<(Self, usize), Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -17,7 +16,7 @@ impl Parse for bool {
 					(_, Some('u')) => match parser.next_char()? {
 						(_, Some('e')) => {
 							parser.end_fragment(i);
-							Ok(Meta(true, i))
+							Ok((true, i))
 						}
 						(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 					},
@@ -31,7 +30,7 @@ impl Parse for bool {
 						(_, Some('s')) => match parser.next_char()? {
 							(_, Some('e')) => {
 								parser.end_fragment(i);
-								Ok(Meta(false, i))
+								Ok((false, i))
 							}
 							(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 						},

@@ -1,8 +1,4 @@
-use json_syntax::{
-	json,
-	object::{Entry, Key},
-	Object, Value,
-};
+use json_syntax::{json, object::Key, Object, Value};
 
 #[test]
 fn macro_01() {
@@ -66,7 +62,7 @@ fn macro_07() {
 
 	assert_eq!(
 		value,
-		Value::Object(vec![Entry::new("foo".into(), Value::Null)].into())
+		Value::Object(vec![("foo".into(), Value::Null)].into())
 	)
 }
 
@@ -105,8 +101,8 @@ fn macro_10() {
 	assert_eq!(
 		value,
 		Value::Object(Object::from_vec(vec![
-			Entry::new("a".into(), Value::Boolean(true)),
-			Entry::new("b".into(), Value::Boolean(false))
+			("a".into(), Value::Boolean(true)),
+			("b".into(), Value::Boolean(false))
 		]))
 	)
 }
@@ -123,8 +119,8 @@ fn macro_11() {
 	assert_eq!(
 		value,
 		Value::Object(Object::from_vec(vec![
-			Entry::new("a".into(), Value::Boolean(true)),
-			Entry::new("b".into(), Value::Boolean(false))
+			("a".into(), Value::Boolean(true)),
+			("b".into(), Value::Boolean(false))
 		]))
 	)
 }
@@ -141,9 +137,9 @@ fn macro_12() {
 	assert_eq!(
 		value,
 		Value::Object(Object::from_vec(vec![
-			Entry::new("a".into(), Value::Boolean(true)),
-			Entry::new("b".into(), Value::Object(Object::default())),
-			Entry::new("c".into(), Value::Boolean(false))
+			("a".into(), Value::Boolean(true)),
+			("b".into(), Value::Object(Object::default())),
+			("c".into(), Value::Boolean(false))
 		]))
 	)
 }
@@ -160,9 +156,9 @@ fn macro_13() {
 	assert_eq!(
 		value,
 		Value::Object(Object::from_vec(vec![
-			Entry::new("a".into(), Value::Boolean(true)),
-			Entry::new("b".into(), Value::Object(Object::default())),
-			Entry::new("c".into(), Value::Boolean(false))
+			("a".into(), Value::Boolean(true)),
+			("b".into(), Value::Object(Object::default())),
+			("c".into(), Value::Boolean(false))
 		]))
 	)
 }
@@ -176,8 +172,8 @@ fn macro_14() {
 	assert_eq!(
 		value,
 		Value::Object(Object::from_vec(vec![
-			Entry::new("a".into(), Value::Number(0.1f32.try_into().unwrap())),
-			Entry::new("b".into(), Value::Number(1.1e10f32.try_into().unwrap()))
+			("a".into(), Value::Number(0.1f32.try_into().unwrap())),
+			("b".into(), Value::Number(1.1e10f32.try_into().unwrap()))
 		]))
 	)
 }

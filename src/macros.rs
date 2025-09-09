@@ -141,42 +141,42 @@ macro_rules! json {
 
 	// Next value is `null`.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: null $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(null))] () ($($rest)*) ($($rest)*))
+		json!(@object [$($elems,)* (json!(@key ($($key)+)), json!(null))] () ($($rest)*) ($($rest)*))
 	};
 
 	// Next value is `true`.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: true $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(true))] () ($($rest)*) ($($rest)*))
+		json!(@object [$($elems,)* (json!(@key ($($key)+)), json!(true))] () ($($rest)*) ($($rest)*))
 	};
 
 	// Next value is `false`.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: false $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!(false))] () ($($rest)*) ($($rest)*))
+		json!(@object [$($elems,)* (json!(@key ($($key)+)), json!(false))] () ($($rest)*) ($($rest)*))
 	};
 
 	// Next value is a literal.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: $lit:literal $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!($lit))] () ($($rest)*) ($($rest)*))
+		json!(@object [$($elems,)* (json!(@key ($($key)+)), json!($lit))] () ($($rest)*) ($($rest)*))
 	};
 
 	// Next value is a array.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: [$($array:tt)*] $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!([$($array)*]))] () ($($rest)*) ($($rest)*))
+		json!(@object [$($elems,)* (json!(@key ($($key)+)), json!([$($array)*]))] () ($($rest)*) ($($rest)*))
 	};
 
 	// Next value is a map.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: {$($map:tt)*} $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!({$($map)*}))] () ($($rest)*) ($($rest)*))
+		json!(@object [$($elems,)* (json!(@key ($($key)+)), json!({$($map)*}))] () ($($rest)*) ($($rest)*))
 	};
 
 	// Next value is an expression followed by comma.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: $next:expr, $($rest:tt)*) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!($next)),] () ($($rest)*) ($($rest)*))
+		json!(@object [$($elems,)* (json!(@key ($($key)+)), json!($next)),] () ($($rest)*) ($($rest)*))
 	};
 
 	// Last value is an expression with no trailing comma.
 	(@object [$($elems:expr,)*] ($($key:tt)+) (: $last:expr) $copy:tt) => {
-		json!(@object [$($elems,)* $crate::object::Entry::new(json!(@key ($($key)+)), json!($last))] () () ())
+		json!(@object [$($elems,)* (json!(@key ($($key)+)), json!($last))] () () ())
 	};
 
 	// Comma after the most recent element.

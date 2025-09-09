@@ -1,19 +1,18 @@
 use super::{Context, Error, Parse, Parser};
 use crate::object::Key;
 use decoded_char::DecodedChar;
-use locspan::Meta;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum StartFragment {
 	Empty,
-	NonEmpty(Meta<Key, usize>),
+	NonEmpty((Key, usize)),
 }
 
 impl Parse for StartFragment {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		_context: Context,
-	) -> Result<Meta<Self, usize>, Error<E>>
+	) -> Result<(Self, usize), Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -25,14 +24,14 @@ impl Parse for StartFragment {
 				match parser.peek_char()? {
 					Some('}') => {
 						parser.next_char()?;
-						Ok(Meta(StartFragment::Empty, i))
+						Ok((StartFragment::Empty, i))
 					}
 					_ => {
 						let e = parser.begin_fragment();
 						let key = Key::parse_in(parser, Context::ObjectKey)?;
 						parser.skip_whitespaces()?;
 						match parser.next_char()? {
-							(_, Some(':')) => Ok(Meta(Self::NonEmpty(Meta(key.0, e)), i)),
+							(_, Some(':')) => Ok((Self::NonEmpty((key.0, e)), i)),
 							(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 						}
 					}
@@ -46,7 +45,7 @@ impl Parse for StartFragment {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum ContinueFragment {
 	End,
-	Entry(Meta<Key, usize>),
+	Entry((Key, usize)),
 }
 
 impl ContinueFragment {
@@ -62,7 +61,7 @@ impl ContinueFragment {
 				let key = Key::parse_in(parser, Context::ObjectKey)?;
 				parser.skip_whitespaces()?;
 				match parser.next_char()? {
-					(_, Some(':')) => Ok(Self::Entry(Meta(key.0, e))),
+					(_, Some(':')) => Ok(Self::Entry((key.0, e))),
 					(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 				}
 			}

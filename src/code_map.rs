@@ -91,26 +91,35 @@ impl Entry {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Mapped<T> {
-	pub offset: usize,
-	pub value: T,
-}
+pub struct Mapped<T>(pub T, pub usize);
 
 impl<T> Mapped<T> {
-	pub fn new(offset: usize, value: T) -> Self {
-		Self { offset, value }
+	pub fn offset(&self) -> usize {
+		self.1
+	}
+
+	pub fn into_offset(self) -> usize {
+		self.1
+	}
+
+	pub fn inner(&self) -> &T {
+		&self.0
+	}
+
+	pub fn into_inner(self) -> T {
+		self.0
 	}
 }
 
 impl<T: fmt::Display> fmt::Display for Mapped<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		self.value.fmt(f)
+		self.0.fmt(f)
 	}
 }
 
 impl<T: 'static + std::error::Error> std::error::Error for Mapped<T> {
 	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-		Some(&self.value)
+		Some(&self.0)
 	}
 }
 

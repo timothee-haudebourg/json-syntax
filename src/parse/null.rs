@@ -1,12 +1,11 @@
 use super::{Context, Error, Parse, Parser};
 use decoded_char::DecodedChar;
-use locspan::Meta;
 
 impl Parse for () {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		_context: Context,
-	) -> Result<Meta<Self, usize>, Error<E>>
+	) -> Result<(Self, usize), Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -17,7 +16,7 @@ impl Parse for () {
 					(_, Some('l')) => match parser.next_char()? {
 						(_, Some('l')) => {
 							parser.end_fragment(i);
-							Ok(Meta((), i))
+							Ok(((), i))
 						}
 						(p, unexpected) => Err(Error::unexpected(p, unexpected)),
 					},

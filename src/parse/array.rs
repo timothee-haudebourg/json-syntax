@@ -1,7 +1,5 @@
 use super::{Context, Error, Parse, Parser};
 use decoded_char::DecodedChar;
-use locspan::Meta;
-use locspan_derive::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum StartFragment {
@@ -13,7 +11,7 @@ impl Parse for StartFragment {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		_context: Context,
-	) -> Result<Meta<Self, usize>, Error<E>>
+	) -> Result<(Self, usize), Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -26,11 +24,11 @@ impl Parse for StartFragment {
 					Some(']') => {
 						parser.next_char()?;
 						parser.end_fragment(i);
-						Ok(Meta(StartFragment::Empty, i))
+						Ok((StartFragment::Empty, i))
 					}
 					_ => {
 						// wait for value.
-						Ok(Meta(StartFragment::NonEmpty, i))
+						Ok((StartFragment::NonEmpty, i))
 					}
 				}
 			}
@@ -39,21 +37,7 @@ impl Parse for StartFragment {
 	}
 }
 
-#[derive(
-	Clone,
-	Copy,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Hash,
-	Debug,
-	StrippedPartialEq,
-	StrippedEq,
-	StrippedPartialOrd,
-	StrippedOrd,
-	StrippedHash,
-)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum ContinueFragment {
 	Item,
 	End,

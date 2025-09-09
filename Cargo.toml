@@ -13,35 +13,45 @@ readme = "README.md"
 rust-version = "1.71.0"
 
 [features]
-## JSON Canonicalization Scheme (JCS) implementation. 
-canonicalize = [ "ryu-js", "json-number/canonical" ]
+default = ["serde"]
+
+## JSON Canonicalization Scheme (JCS) implementation.
+canonicalize = ["ryu-js", "json-number/canonical"]
 
 ## Serialization/Deserialization support using `serde`.
-serde = [ "dep:serde", "json-number/serde", "smallstr/serde" ]
+serde = ["dep:serde", "json-number/serde", "smallstr/serde"]
 
 ## Compatibility layer with the `serde_json` crate.
-serde_json = [ "dep:serde_json", "json-number/serde_json" ]
+serde_json = ["dep:serde_json", "json-number/serde_json"]
 
 [package.metadata.docs.rs]
 all-features = true
 
 [dependencies]
-json-number = { version = "0.4", features = [ "smallnumberbuf" ] }
+# json-number = { version = "0.4", features = ["smallnumberbuf"] }
+json-number = { path = "/home/timothee/Projets/utils/parsing/json/json-number/", features = [
+	"smallnumberbuf",
+] }
 smallvec = "1.9"
 smallstr = "0.3"
-locspan = "0.8.2"
-locspan-derive = "0.6"
-indexmap = "1.9.1"
+locspan = "0.9"
+# indexmap = "1.9.1"
 decoded-char = "0.1"
-hashbrown = { version = "0.12.1", features = [ "raw" ] }
-contextual = { version = "0.1.1", optional = true }
-ryu-js = { version = "0.2.2", optional = true }
-serde = { version = "1.0", optional = true }
-serde_json = { version = "1.0", optional = true }
+# hashbrown = { version = "0.12.1", features = ["raw"] }
+btree-indexmap.path = "/home/timothee/Projets/utils/data-structures/btree-indexmap/"
 utf8-decode = "1.0.1"
 
+# Canonicalization.
+ryu-js = { version = "0.2.2", optional = true }
+
+# Compatibility with `serde`.
+serde = { version = "1.0", optional = true }
+
+# Compatibility with `serde_json`.
+serde_json = { version = "1.0", optional = true }
+
 [dev-dependencies]
-serde = { version = "1.0", features = [ "derive" ] }
+serde = { version = "1.0", features = ["derive"] }
 
 [[example]]
 name = "serde"

@@ -4,11 +4,26 @@ use crate::{code_map::Mapped, CodeMap, Value};
 pub type Array = Vec<Value>;
 
 /// Trait for JSON array types like `Vec<Value>` and `[Value]`.
-pub trait JsonArray {
+pub trait JsonSlice {
 	fn iter_mapped<'m>(&self, code_map: &'m CodeMap, offset: usize) -> IterMapped<'_, 'm>;
 }
 
-impl JsonArray for [Value] {
+/// Trait for owned JSON array types like `Vec<Value>`.
+pub trait JsonArray: Sized + JsonSlice {
+	fn into_iter_mapped<'m>(self, code_map: &'m CodeMap, offset: usize) -> IntoIterMapped<'m>;
+}
+
+impl JsonSlice for [Value] {
+	fn iter_mapped<'m>(&self, code_map: &'m CodeMap, offset: usize) -> IterMapped<'_, 'm> {
+		IterMapped {
+			items: self.iter(),
+			code_map,
+			offset: offset + 1,
+		}
+	}
+}
+
+impl JsonSlice for Vec<Value> {
 	fn iter_mapped<'m>(&self, code_map: &'m CodeMap, offset: usize) -> IterMapped<'_, 'm> {
 		IterMapped {
 			items: self.iter(),
@@ -19,9 +34,9 @@ impl JsonArray for [Value] {
 }
 
 impl JsonArray for Vec<Value> {
-	fn iter_mapped<'m>(&self, code_map: &'m CodeMap, offset: usize) -> IterMapped<'_, 'm> {
-		IterMapped {
-			items: self.iter(),
+	fn into_iter_mapped<'m>(self, code_map: &'m CodeMap, offset: usize) -> IntoIterMapped<'m> {
+		IntoIterMapped {
+			items: self.into_iter(),
 			code_map,
 			offset: offset + 1,
 		}
@@ -41,7 +56,25 @@ impl<'a, 'm> Iterator for IterMapped<'a, 'm> {
 		self.items.next().map(|item| {
 			let offset = self.offset;
 			self.offset += self.code_map.get(self.offset).unwrap().volume;
-			Mapped::new(offset, item)
+			Mapped(item, offset)
+		})
+	}
+}
+
+pub struct IntoIterMapped<'m> {
+	items: std::vec::IntoIter<Value>,
+	code_map: &'m CodeMap,
+	offset: usize,
+}
+
+impl<'m> Iterator for IntoIterMapped<'m> {
+	type Item = Mapped<Value>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		self.items.next().map(|item| {
+			let offset = self.offset;
+			self.offset += self.code_map.get(self.offset).unwrap().volume;
+			Mapped(item, offset)
 		})
 	}
 }

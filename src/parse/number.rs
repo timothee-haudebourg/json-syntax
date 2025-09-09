@@ -1,14 +1,13 @@
 use super::{Context, Error, Parse, Parser};
 use crate::{NumberBuf, SMALL_STRING_CAPACITY};
 use decoded_char::DecodedChar;
-use locspan::Meta;
 use smallvec::SmallVec;
 
 impl Parse for NumberBuf {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		context: Context,
-	) -> Result<Meta<Self, usize>, Error<E>>
+	) -> Result<(Self, usize), Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -111,7 +110,7 @@ impl Parse for NumberBuf {
 			State::Zero | State::NonZero | State::FractionalRest | State::ExponentRest
 		) {
 			parser.end_fragment(i);
-			Ok(Meta(unsafe { NumberBuf::new_unchecked(buffer) }, i))
+			Ok((unsafe { NumberBuf::new_unchecked(buffer) }, i))
 		} else {
 			Err(Error::unexpected(parser.position, None))
 		}

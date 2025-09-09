@@ -1,6 +1,6 @@
 use super::{Context, Error, Parse, Parser};
 use decoded_char::DecodedChar;
-use locspan::{Meta, Span};
+use locspan::Span;
 use smallstr::SmallString;
 
 fn is_control(c: char) -> bool {
@@ -42,7 +42,7 @@ impl<A: smallvec::Array<Item = u8>> Parse for SmallString<A> {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		_context: Context,
-	) -> Result<Meta<Self, usize>, Error<E>>
+	) -> Result<(Self, usize), Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -66,7 +66,7 @@ impl<A: smallvec::Array<Item = u8>> Parse for SmallString<A> {
 							}
 
 							parser.end_fragment(i);
-							break Ok(Meta(result, i));
+							break Ok((result, i));
 						}
 						(_, Some('\\')) => match parser.next_char()? {
 							(_, Some(c @ ('"' | '\\' | '/'))) => c,

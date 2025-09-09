@@ -1,27 +1,26 @@
 use super::{array, object, Context, Error, Parse, Parser};
-use crate::{object::Key, Array, NumberBuf, Object, String, Value};
+use crate::{object::Key, Array, JsonString, NumberBuf, Object, Value};
 use decoded_char::DecodedChar;
-use locspan::Meta;
 
 /// Value fragment.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum Fragment {
 	Value(Value),
 	BeginArray,
-	BeginObject(Meta<Key, usize>),
+	BeginObject((Key, usize)),
 }
 
 impl Fragment {
 	fn value_or_parse<C, E>(
-		value: Option<Meta<Value, usize>>,
+		value: Option<(Value, usize)>,
 		parser: &mut Parser<C, E>,
 		context: Context,
-	) -> Result<Meta<Self, usize>, Error<E>>
+	) -> Result<(Self, usize), Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
 		match value {
-			Some(value) => Ok(value.cast()),
+			Some((value, i)) => Ok((value.into(), i)),
 			None => Self::parse_in(parser, context),
 		}
 	}
@@ -37,35 +36,43 @@ impl Parse for Fragment {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		context: Context,
-	) -> Result<Meta<Self, usize>, Error<E>>
+	) -> Result<(Self, usize), Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
 		parser.skip_whitespaces()?;
 
-		let value = match parser.peek_char()? {
-			Some('n') => <()>::parse_in(parser, context)?.map(|()| Value::Null),
-			Some('t' | 'f') => bool::parse_in(parser, context)?.map(Value::Boolean),
-			Some('0'..='9' | '-') => NumberBuf::parse_in(parser, context)?.map(Value::Number),
-			Some('"') => String::parse_in(parser, context)?.map(Value::String),
+		let (value, i) = match parser.peek_char()? {
+			Some('n') => {
+				let ((), i) = <()>::parse_in(parser, context)?;
+				(Value::Null, i)
+			}
+			Some('t' | 'f') => {
+				let (value, i) = bool::parse_in(parser, context)?;
+				(Value::Boolean(value), i)
+			}
+			Some('0'..='9' | '-') => {
+				let (value, i) = NumberBuf::parse_in(parser, context)?;
+				(Value::Number(value), i)
+			}
+			Some('"') => {
+				let (value, i) = JsonString::parse_in(parser, context)?;
+				(Value::String(value), i)
+			}
 			Some('[') => match array::StartFragment::parse_in(parser, context)? {
-				Meta(array::StartFragment::Empty, span) => Meta(Value::Array(Array::new()), span),
-				Meta(array::StartFragment::NonEmpty, span) => {
-					return Ok(Meta(Self::BeginArray, span))
-				}
+				(array::StartFragment::Empty, span) => (Value::Array(Array::new()), span),
+				(array::StartFragment::NonEmpty, span) => return Ok((Self::BeginArray, span)),
 			},
 			Some('{') => match object::StartFragment::parse_in(parser, context)? {
-				Meta(object::StartFragment::Empty, span) => {
-					Meta(Value::Object(Object::new()), span)
-				}
-				Meta(object::StartFragment::NonEmpty(key), span) => {
-					return Ok(Meta(Self::BeginObject(key), span))
+				(object::StartFragment::Empty, span) => (Value::Object(Object::new()), span),
+				(object::StartFragment::NonEmpty(key), span) => {
+					return Ok((Self::BeginObject(key), span))
 				}
 			},
 			unexpected => return Err(Error::unexpected(parser.position, unexpected)),
 		};
 
-		Ok(value.map(Self::Value))
+		Ok((Self::Value(value), i))
 	}
 }
 
@@ -73,19 +80,19 @@ impl Parse for Value {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		context: Context,
-	) -> Result<Meta<Self, usize>, Error<E>>
+	) -> Result<(Self, usize), Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
 		enum StackItem {
-			Array(Meta<Array, usize>),
-			ArrayItem(Meta<Array, usize>),
-			Object(Meta<Object, usize>),
-			ObjectEntry(Meta<Object, usize>, Meta<Key, usize>),
+			Array((Array, usize)),
+			ArrayItem((Array, usize)),
+			Object((Object, usize)),
+			ObjectEntry((Object, usize), (Key, usize)),
 		}
 
 		let mut stack: Vec<StackItem> = vec![];
-		let mut value: Option<Meta<Value, usize>> = None;
+		let mut value: Option<(Value, usize)> = None;
 
 		fn stack_context(stack: &[StackItem], root: Context) -> Context {
 			match stack.last() {
@@ -103,68 +110,66 @@ impl Parse for Value {
 					parser,
 					stack_context(&stack, context),
 				)? {
-					Meta(Fragment::Value(value), i) => {
+					(Fragment::Value(value), i) => {
 						parser.skip_whitespaces()?;
 						break match parser.next_char()? {
 							(p, Some(c)) => Err(Error::unexpected(p, Some(c))),
-							(_, None) => Ok(Meta(value, i)),
+							(_, None) => Ok((value, i)),
 						};
 					}
-					Meta(Fragment::BeginArray, i) => {
-						stack.push(StackItem::ArrayItem(Meta(Array::new(), i)))
+					(Fragment::BeginArray, i) => {
+						stack.push(StackItem::ArrayItem((Array::new(), i)))
 					}
-					Meta(Fragment::BeginObject(key), i) => {
-						stack.push(StackItem::ObjectEntry(Meta(Object::new(), i), key))
+					(Fragment::BeginObject(key), i) => {
+						stack.push(StackItem::ObjectEntry((Object::new(), i), key))
 					}
 				},
-				Some(StackItem::Array(Meta(array, i))) => {
+				Some(StackItem::Array((array, i))) => {
 					match array::ContinueFragment::parse_in(parser, i)? {
 						array::ContinueFragment::Item => {
-							stack.push(StackItem::ArrayItem(Meta(array, i)))
+							stack.push(StackItem::ArrayItem((array, i)))
 						}
-						array::ContinueFragment::End => value = Some(Meta(Value::Array(array), i)),
+						array::ContinueFragment::End => value = Some((Value::Array(array), i)),
 					}
 				}
-				Some(StackItem::ArrayItem(Meta(mut array, i))) => {
+				Some(StackItem::ArrayItem((mut array, i))) => {
 					match Fragment::value_or_parse(value.take(), parser, Context::Array)? {
-						Meta(Fragment::Value(value), _) => {
+						(Fragment::Value(value), _) => {
 							array.push(value);
-							stack.push(StackItem::Array(Meta(array, i)));
+							stack.push(StackItem::Array((array, i)));
 						}
-						Meta(Fragment::BeginArray, j) => {
-							stack.push(StackItem::ArrayItem(Meta(array, i)));
-							stack.push(StackItem::ArrayItem(Meta(Array::new(), j)))
+						(Fragment::BeginArray, j) => {
+							stack.push(StackItem::ArrayItem((array, i)));
+							stack.push(StackItem::ArrayItem((Array::new(), j)))
 						}
-						Meta(Fragment::BeginObject(value_key), j) => {
-							stack.push(StackItem::ArrayItem(Meta(array, i)));
-							stack.push(StackItem::ObjectEntry(Meta(Object::new(), j), value_key))
+						(Fragment::BeginObject(value_key), j) => {
+							stack.push(StackItem::ArrayItem((array, i)));
+							stack.push(StackItem::ObjectEntry((Object::new(), j), value_key))
 						}
 					}
 				}
-				Some(StackItem::Object(Meta(object, i))) => {
+				Some(StackItem::Object((object, i))) => {
 					match object::ContinueFragment::parse_in(parser, i)? {
 						object::ContinueFragment::Entry(key) => {
-							stack.push(StackItem::ObjectEntry(Meta(object, i), key))
+							stack.push(StackItem::ObjectEntry((object, i), key))
 						}
-						object::ContinueFragment::End => {
-							value = Some(Meta(Value::Object(object), i))
-						}
+						object::ContinueFragment::End => value = Some((Value::Object(object), i)),
 					}
 				}
-				Some(StackItem::ObjectEntry(Meta(mut object, i), Meta(key, e))) => {
+				Some(StackItem::ObjectEntry((mut object, i), (key, e))) => {
 					match Fragment::value_or_parse(value.take(), parser, Context::ObjectValue)? {
-						Meta(Fragment::Value(value), _) => {
+						(Fragment::Value(value), _) => {
 							parser.end_fragment(e);
-							object.push(key, value);
-							stack.push(StackItem::Object(Meta(object, i)));
+							object.push_back(key, value);
+							stack.push(StackItem::Object((object, i)));
 						}
-						Meta(Fragment::BeginArray, j) => {
-							stack.push(StackItem::ObjectEntry(Meta(object, i), Meta(key, e)));
-							stack.push(StackItem::ArrayItem(Meta(Array::new(), j)))
+						(Fragment::BeginArray, j) => {
+							stack.push(StackItem::ObjectEntry((object, i), (key, e)));
+							stack.push(StackItem::ArrayItem((Array::new(), j)))
 						}
-						Meta(Fragment::BeginObject(value_key), j) => {
-							stack.push(StackItem::ObjectEntry(Meta(object, i), Meta(key, e)));
-							stack.push(StackItem::ObjectEntry(Meta(Object::new(), j), value_key))
+						(Fragment::BeginObject(value_key), j) => {
+							stack.push(StackItem::ObjectEntry((object, i), (key, e)));
+							stack.push(StackItem::ObjectEntry((Object::new(), j), value_key))
 						}
 					}
 				}

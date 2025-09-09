@@ -36,14 +36,15 @@
 //! println!("value: {}", value.pretty_print());
 //! ```
 pub use json_number::{InvalidNumber, Number};
+use lexical::{LexicalEq, LexicalPartialEq};
 use smallvec::SmallVec;
 use std::{fmt, str::FromStr};
 
 pub mod array;
 pub mod code_map;
+pub mod lexical;
 pub mod object;
 pub mod parse;
-mod unordered;
 pub use code_map::CodeMap;
 pub use parse::Parse;
 pub mod print;
@@ -52,20 +53,18 @@ pub mod kind;
 pub use kind::{Kind, KindSet};
 mod convert;
 mod macros;
-mod try_from;
-pub use try_from::*;
+pub mod try_from;
+pub mod visitor;
 
 pub mod number {
 	pub use json_number::Buffer;
 }
 
 #[cfg(feature = "serde")]
-mod serde;
+pub mod serde;
 
 #[cfg(feature = "serde")]
-pub use self::serde::*;
-
-pub use unordered::*;
+pub use serde::{from_slice, from_str, from_value, to_value};
 
 /// String stack capacity.
 ///
@@ -74,7 +73,7 @@ pub use unordered::*;
 pub const SMALL_STRING_CAPACITY: usize = 16;
 
 /// String.
-pub type String = smallstr::SmallString<[u8; SMALL_STRING_CAPACITY]>;
+pub type JsonString = smallstr::SmallString<[u8; SMALL_STRING_CAPACITY]>;
 
 pub use array::Array;
 
@@ -162,7 +161,7 @@ pub enum Value {
 	Number(NumberBuf),
 
 	/// String.
-	String(String),
+	String(JsonString),
 
 	/// Array.
 	Array(Array),
@@ -299,7 +298,7 @@ impl Value {
 	}
 
 	#[inline]
-	pub fn as_string_mut(&mut self) -> Option<&mut String> {
+	pub fn as_string_mut(&mut self) -> Option<&mut JsonString> {
 		match self {
 			Self::String(s) => Some(s),
 			_ => None,
@@ -367,7 +366,7 @@ impl Value {
 	}
 
 	#[inline]
-	pub fn into_string(self) -> Option<String> {
+	pub fn into_string(self) -> Option<JsonString> {
 		match self {
 			Self::String(s) => Some(s),
 			_ => None,
@@ -446,21 +445,21 @@ impl Value {
 	}
 }
 
-impl UnorderedPartialEq for Value {
-	fn unordered_eq(&self, other: &Self) -> bool {
+impl LexicalPartialEq for Value {
+	fn lexical_eq(&self, other: &Self) -> bool {
 		match (self, other) {
 			(Self::Null, Self::Null) => true,
 			(Self::Boolean(a), Self::Boolean(b)) => a == b,
 			(Self::Number(a), Self::Number(b)) => a == b,
 			(Self::String(a), Self::String(b)) => a == b,
-			(Self::Array(a), Self::Array(b)) => a.unordered_eq(b),
-			(Self::Object(a), Self::Object(b)) => a.unordered_eq(b),
+			(Self::Array(a), Self::Array(b)) => a.lexical_eq(b),
+			(Self::Object(a), Self::Object(b)) => a.lexical_eq(b),
 			_ => false,
 		}
 	}
 }
 
-impl UnorderedEq for Value {}
+impl LexicalEq for Value {}
 
 impl fmt::Display for Value {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -492,8 +491,8 @@ impl<'n> From<&'n Number> for Value {
 	}
 }
 
-impl From<String> for Value {
-	fn from(s: String) -> Self {
+impl From<JsonString> for Value {
+	fn from(s: JsonString) -> Self {
 		Self::String(s)
 	}
 }
@@ -574,7 +573,7 @@ try_from_float! {
 
 pub enum FragmentRef<'a> {
 	Value(&'a Value),
-	Entry(&'a object::Entry),
+	Entry(object::EntryRef<'a>),
 	Key(&'a object::Key),
 }
 
@@ -633,7 +632,7 @@ impl<'a> FragmentRef<'a> {
 		match self {
 			Self::Value(Value::Array(a)) => SubFragments::Array(a.iter()),
 			Self::Value(Value::Object(o)) => SubFragments::Object(o.iter()),
-			Self::Entry(e) => SubFragments::Entry(Some(&e.key), Some(&e.value)),
+			Self::Entry((key, value)) => SubFragments::Entry(Some(key), Some(value)),
 			_ => SubFragments::None,
 		}
 	}
@@ -642,7 +641,7 @@ impl<'a> FragmentRef<'a> {
 pub enum SubFragments<'a> {
 	None,
 	Array(core::slice::Iter<'a, Value>),
-	Object(core::slice::Iter<'a, object::Entry>),
+	Object(object::Iter<'a>),
 	Entry(Option<&'a object::Key>, Option<&'a Value>),
 }
 

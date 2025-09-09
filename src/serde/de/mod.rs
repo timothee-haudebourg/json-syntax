@@ -9,10 +9,9 @@ use std::fmt;
 
 use crate::{
 	object::{Entry, Key},
+	serde::NUMBER_TOKEN,
 	Array, NumberBuf, Object, Value,
 };
-
-use super::NUMBER_TOKEN;
 
 impl Value {
 	#[cold]
@@ -126,6 +125,7 @@ impl<'de> Deserialize<'de> for Value {
 			where
 				V: MapAccess<'de>,
 			{
+				eprintln!("visit map (value)");
 				enum MapTag {
 					Number,
 					None(Key),
@@ -187,7 +187,7 @@ impl<'de> Deserialize<'de> for Value {
 						let mut object = Object::new();
 
 						object.insert(key, visitor.next_value()?);
-						while let Some((key, value)) = visitor.next_entry()? {
+						while let Some((key, value)) = visitor.next_entry::<Key, Value>()? {
 							object.insert(key, value);
 						}
 
@@ -228,9 +228,10 @@ impl<'de> Deserialize<'de> for Object {
 			where
 				A: MapAccess<'de>,
 			{
+				eprintln!("visit map (object)");
 				let mut object = Object::new();
 
-				while let Some((key, value)) = map.next_entry()? {
+				while let Some((key, value)) = map.next_entry::<Key, Value>()? {
 					object.insert(key, value);
 				}
 
@@ -351,10 +352,7 @@ impl<'de> serde::Deserializer<'de> for Value {
 		let (variant, value) = match self {
 			Value::Object(value) => {
 				let mut iter = value.into_iter();
-				let Entry {
-					key: variant,
-					value,
-				} = match iter.next() {
+				let (variant, value) = match iter.next() {
 					Some(v) => v,
 					None => {
 						return Err(serde::de::Error::invalid_value(
@@ -631,7 +629,7 @@ impl<'de> MapAccess<'de> for ObjectDeserializer {
 		T: DeserializeSeed<'de>,
 	{
 		match self.iter.next() {
-			Some(Entry { key, value }) => {
+			Some((key, value)) => {
 				self.value = Some(value);
 				let key_de = MapKeyDeserializer { key };
 				seed.deserialize(key_de).map(Some)

@@ -17,7 +17,7 @@ pub trait TryFromJson: Sized {
 	/// It is assumed that the offset of `value` in the code map is `0`, for
 	/// instance if it is the output of a [`Parse`](crate::Parse) trait
 	/// function.
-	fn try_from_json(value: &Value, code_map: &CodeMap) -> Result<Self, Self::Error> {
+	fn try_from_json(value: Value, code_map: &CodeMap) -> Result<Self, Self::Error> {
 		Self::try_from_json_at(value, code_map, 0)
 	}
 
@@ -28,7 +28,7 @@ pub trait TryFromJson: Sized {
 	/// [`Object::iter_mapped`] methods to visit arrays and objects while
 	/// keeping track of the code map offset of each visited item.
 	fn try_from_json_at(
-		value: &Value,
+		value: Value,
 		code_map: &CodeMap,
 		offset: usize,
 	) -> Result<Self, Self::Error>;
@@ -38,7 +38,7 @@ impl<T: TryFromJson> TryFromJson for Box<T> {
 	type Error = T::Error;
 
 	fn try_from_json_at(
-		json: &Value,
+		json: Value,
 		code_map: &CodeMap,
 		offset: usize,
 	) -> Result<Self, Self::Error> {
@@ -50,7 +50,7 @@ impl<T: TryFromJson> TryFromJson for Option<T> {
 	type Error = T::Error;
 
 	fn try_from_json_at(
-		json: &Value,
+		json: Value,
 		code_map: &CodeMap,
 		offset: usize,
 	) -> Result<Self, Self::Error> {
@@ -131,18 +131,18 @@ impl TryFromJson for () {
 	type Error = Mapped<Unexpected>;
 
 	fn try_from_json_at(
-		json: &Value,
+		json: Value,
 		_code_map: &CodeMap,
 		offset: usize,
 	) -> Result<Self, Self::Error> {
 		match json {
 			Value::Null => Ok(()),
-			other => Err(Mapped::new(
-				offset,
+			other => Err(Mapped(
 				Unexpected {
 					expected: KindSet::NULL,
 					found: other.kind(),
 				},
+				offset,
 			)),
 		}
 	}
@@ -152,18 +152,18 @@ impl TryFromJson for bool {
 	type Error = Mapped<Unexpected>;
 
 	fn try_from_json_at(
-		json: &Value,
+		json: Value,
 		_code_map: &CodeMap,
 		offset: usize,
 	) -> Result<Self, Self::Error> {
 		match json {
-			Value::Boolean(value) => Ok(*value),
-			other => Err(Mapped::new(
-				offset,
+			Value::Boolean(value) => Ok(value),
+			other => Err(Mapped(
 				Unexpected {
 					expected: KindSet::BOOLEAN,
 					found: other.kind(),
 				},
+				offset,
 			)),
 		}
 	}
@@ -219,13 +219,13 @@ macro_rules! number_from_json {
 			impl TryFromJson for $ty {
 				type Error = Mapped<TryIntoNumberError<NumberType<$ty>>>;
 
-				fn try_from_json_at(json: &Value, _code_map: &CodeMap, offset: usize) -> Result<Self, Self::Error> {
+				fn try_from_json_at(json: Value, _code_map: &CodeMap, offset: usize) -> Result<Self, Self::Error> {
 					match json {
-						Value::Number(value) => value.parse().map_err(|_| Mapped::new(offset, TryIntoNumberError::OutOfBounds(NumberType::default()))),
-						other => Err(Mapped::new(offset, TryIntoNumberError::Unexpected(Unexpected {
+						Value::Number(value) => value.parse().map_err(|_| Mapped(TryIntoNumberError::OutOfBounds(NumberType::default()), offset)),
+						other => Err(Mapped(TryIntoNumberError::Unexpected(Unexpected {
 							expected: KindSet::NUMBER,
 							found: other.kind()
-						})))
+						}), offset))
 					}
 				}
 			}
@@ -239,18 +239,18 @@ impl TryFromJson for String {
 	type Error = Mapped<Unexpected>;
 
 	fn try_from_json_at(
-		json: &Value,
+		json: Value,
 		_code_map: &CodeMap,
 		offset: usize,
 	) -> Result<Self, Self::Error> {
 		match json {
 			Value::String(value) => Ok(value.to_string()),
-			other => Err(Mapped::new(
-				offset,
+			other => Err(Mapped(
 				Unexpected {
 					expected: KindSet::STRING,
 					found: other.kind(),
 				},
+				offset,
 			)),
 		}
 	}
@@ -263,21 +263,21 @@ where
 	type Error = T::Error;
 
 	fn try_from_json_at(
-		json: &Value,
+		json: Value,
 		code_map: &CodeMap,
 		offset: usize,
 	) -> Result<Self, Self::Error> {
 		match json {
 			Value::Array(value) => value
-				.iter_mapped(code_map, offset)
-				.map(|item| T::try_from_json_at(item.value, code_map, item.offset))
+				.into_iter_mapped(code_map, offset)
+				.map(|item| T::try_from_json_at(item.0, code_map, item.1))
 				.collect::<Result<Vec<_>, _>>(),
-			other => Err(Mapped::new(
-				offset,
+			other => Err(Mapped(
 				Unexpected {
 					expected: KindSet::ARRAY,
 					found: other.kind(),
 				},
+				offset,
 			)
 			.into()),
 		}
@@ -291,7 +291,7 @@ where
 	type Error = V::Error;
 
 	fn try_from_json_at(
-		json: &Value,
+		json: Value,
 		code_map: &CodeMap,
 		offset: usize,
 	) -> Result<Self, Self::Error> {
@@ -299,30 +299,26 @@ where
 			Value::Object(object) => {
 				let mut result = BTreeMap::new();
 
-				for entry in object.iter_mapped(code_map, offset) {
+				for entry in object.into_iter_mapped(code_map, offset) {
 					result.insert(
 						entry
-							.value
-							.key
-							.value
+							.0
+							 .0
+							 .0
 							.parse()
-							.map_err(|e| Mapped::new(entry.value.key.offset, e))?,
-						V::try_from_json_at(
-							entry.value.value.value,
-							code_map,
-							entry.value.value.offset,
-						)?,
+							.map_err(|e| Mapped(e, entry.0 .0 .1))?,
+						V::try_from_json_at(entry.0 .1 .0, code_map, entry.0 .1 .1)?,
 					);
 				}
 
 				Ok(result)
 			}
-			other => Err(Mapped::new(
-				offset,
+			other => Err(Mapped(
 				Unexpected {
 					expected: KindSet::OBJECT,
 					found: other.kind(),
 				},
+				offset,
 			)
 			.into()),
 		}
