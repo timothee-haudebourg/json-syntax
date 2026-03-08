@@ -107,6 +107,9 @@ pub type NumberBuf = json_number::SmallNumberBuf<NUMBER_CAPACITY>;
 /// about all the fragments of the JSON value (their location in the source
 /// text).
 ///
+/// It can be used to retrieve the provenance of a fragment using
+/// [`FragmentRef::find_in`].
+///
 /// # Comparison
 ///
 /// This type implements the usual comparison traits `PartialEq`, `Eq`,
@@ -618,6 +621,28 @@ impl<'a> FragmentRef<'a> {
 			Self::Key(k) => FragmentRef::Key(k),
 		}
 	}
+
+	fn same_ref(&self, other: &FragmentRef<'_>) -> bool {
+		use FragmentRef::*;
+		match (*self, *other) {
+			(Value(v1), Value(v2)) => v1 as *const _ == v2 as *const _,
+			(Entry(e1), Entry(e2)) => e1 as *const _ == e2 as *const _,
+			(Key(k1), Key(k2)) => k1 as *const _ == k2 as *const _,
+			_ => false,
+		}
+	}
+
+	pub fn find_in(&self, root: &Value, code_map: &CodeMap) -> Option<locspan::Span> {
+		root.traverse()
+			.zip(code_map)
+			.find_map(|((_, fref), (_, entry))| {
+				if fref.same_ref(self) {
+					Some(entry.span)
+				} else {
+					None
+				}
+			})
+	}
 }
 
 impl<'a> Clone for FragmentRef<'a> {
@@ -627,6 +652,16 @@ impl<'a> Clone for FragmentRef<'a> {
 }
 
 impl<'a> Copy for FragmentRef<'a> {}
+
+impl<'a> std::fmt::Debug for FragmentRef<'a> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Value(arg0) => f.debug_tuple("Value").field(arg0).finish(),
+			Self::Entry(arg0) => f.debug_tuple("Entry").field(arg0).finish(),
+			Self::Key(arg0) => f.debug_tuple("Key").field(arg0).finish(),
+		}
+	}
+}
 
 impl<'a> FragmentRef<'a> {
 	pub fn sub_fragments(&self) -> SubFragments<'a> {
@@ -699,6 +734,8 @@ impl<'a> Iterator for Traverse<'a> {
 
 #[cfg(test)]
 mod tests {
+	use crate::{Parse, Value};
+
 	#[cfg(feature = "canonicalize")]
 	#[test]
 	fn canonicalize_01() {
@@ -739,5 +776,33 @@ mod tests {
 			value.compact_print().to_string(),
 			"{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}"
 		)
+	}
+
+	#[test]
+	fn find_in_t1() {
+		const SRC: &str = r#"{ "a": 0, "b": [1, 2] }"#;
+		let (value, code_map) = Value::parse_str(SRC).unwrap();
+		for (i, fref) in value.traverse() {
+			assert_eq!(fref.find_in(&value, &code_map), Some(code_map[i].span));
+		}
+		// identical fragments from a different parsing are not recognized
+		let (other, _) = Value::parse_str(SRC).unwrap();
+		for (_, fref) in other.traverse() {
+			assert_eq!(fref.find_in(&value, &code_map), None);
+		}
+	}
+
+	#[test]
+	fn find_in_t2() {
+		const SRC: &str = r#"{ "a": 0, "b": { "c": 1, "d": [2, 3] }, "e": [4, [5, 6]] }"#;
+		let (value, code_map) = Value::parse_str(SRC).unwrap();
+		for (i, fref) in value.traverse() {
+			assert_eq!(fref.find_in(&value, &code_map), Some(code_map[i].span));
+		}
+		// identical fragments from a different parsing are not recognized
+		let (other, _) = Value::parse_str(SRC).unwrap();
+		for (_, fref) in other.traverse() {
+			assert_eq!(fref.find_in(&value, &code_map), None);
+		}
 	}
 }
