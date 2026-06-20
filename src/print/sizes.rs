@@ -1,4 +1,7 @@
-use crate::visitor::{JsonValue, JsonVisitor};
+use crate::{
+	visitor::{JsonVisitor, VisitJson},
+	JsonNumber,
+};
 
 use super::{Limit, Options};
 
@@ -50,7 +53,7 @@ impl<'a> JsonVisitor for SizesVisitor<'a> {
 		}
 	}
 
-	fn visit_number(self, value: &json_number::Number) -> Self::Output {
+	fn visit_number(self, value: &JsonNumber) -> Self::Output {
 		Size::Width(value.as_str().len())
 	}
 
@@ -58,7 +61,7 @@ impl<'a> JsonVisitor for SizesVisitor<'a> {
 		Size::Width(printed_string_size(value))
 	}
 
-	fn visit_array<I: IntoIterator<Item: JsonValue>>(self, items: I) -> Self::Output {
+	fn visit_array<I: IntoIterator<Item: VisitJson>>(self, items: I) -> Self::Output {
 		let index = self.sizes.len();
 		self.sizes.push(Size::Width(0));
 
@@ -73,7 +76,7 @@ impl<'a> JsonVisitor for SizesVisitor<'a> {
 			}
 
 			let item_visitor = SizesVisitor {
-				options: &self.options,
+				options: self.options,
 				sizes: &mut *self.sizes,
 			};
 
@@ -115,7 +118,7 @@ impl<'a> JsonVisitor for SizesVisitor<'a> {
 		size
 	}
 
-	fn visit_object<E: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: JsonValue>(
+	fn visit_object<E: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: VisitJson>(
 		self,
 		entries: E,
 	) -> Self::Output {
@@ -139,7 +142,7 @@ impl<'a> JsonVisitor for SizesVisitor<'a> {
 			));
 
 			let value_visitor = SizesVisitor {
-				options: &self.options,
+				options: self.options,
 				sizes: &mut *self.sizes,
 			};
 

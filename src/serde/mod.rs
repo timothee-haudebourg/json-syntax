@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::{Parse, Value};
+use crate::{JsonValue, ParseJson};
 use serde::{
 	de::{DeserializeOwned, Error},
 	Serialize,
@@ -43,13 +43,13 @@ impl<E: fmt::Display> fmt::Display for JsonSerdeAdaptor<E> {
 
 impl<E: std::error::Error> std::error::Error for JsonSerdeAdaptor<E> {}
 
-/// Serializes the given `value` into a JSON [`Value`].
+/// Serializes the given `value` into a JSON [`JsonValue`].
 ///
 /// # Example
 ///
 /// ```
 /// use serde::Serialize;
-/// use json_syntax::{json, Value};
+/// use json_syntax::{json, JsonValue};
 ///
 /// #[derive(Serialize)]
 /// struct User {
@@ -62,7 +62,7 @@ impl<E: std::error::Error> std::error::Error for JsonSerdeAdaptor<E> {}
 ///   location: "Menlo Park, CA".to_owned(),
 /// };
 ///
-/// let expected: Value = json!({
+/// let expected: JsonValue = json!({
 ///   "fingerprint": "0xF9BA143B95FF6D82",
 ///   "location": "Menlo Park, CA",
 /// });
@@ -70,7 +70,7 @@ impl<E: std::error::Error> std::error::Error for JsonSerdeAdaptor<E> {}
 /// let v = json_syntax::to_value(u).unwrap();
 /// assert_eq!(v, expected);
 /// ```
-pub fn to_value<T>(value: T) -> Result<Value, SerializeError>
+pub fn to_value<T>(value: T) -> Result<JsonValue, SerializeError>
 where
 	T: Serialize,
 {
@@ -83,7 +83,7 @@ where
 ///
 /// ```
 /// use serde::Deserialize;
-/// use json_syntax::{json, Value};
+/// use json_syntax::{json, JsonValue};
 ///
 /// #[derive(Deserialize, Debug)]
 /// struct User {
@@ -91,7 +91,7 @@ where
 ///     location: String,
 /// }
 ///
-/// let j: Value = json!({
+/// let j: JsonValue = json!({
 ///   "fingerprint": "0xF9BA143B95FF6D82",
 ///   "location": "Menlo Park, CA"
 /// });
@@ -99,7 +99,7 @@ where
 /// let u: User = json_syntax::from_value(j).unwrap();
 /// println!("{:#?}", u);
 /// ```
-pub fn from_value<T>(value: Value) -> Result<T, DeserializeError>
+pub fn from_value<T>(value: JsonValue) -> Result<T, DeserializeError>
 where
 	T: DeserializeOwned,
 {
@@ -110,7 +110,7 @@ pub fn from_str<T>(s: &str) -> Result<T, DeserializeError>
 where
 	T: DeserializeOwned,
 {
-	let (json, _) = Value::parse_str(s).map_err(DeserializeError::custom)?;
+	let (json, _) = JsonValue::parse_str(s).map_err(DeserializeError::custom)?;
 	from_value(json)
 }
 
@@ -118,6 +118,6 @@ pub fn from_slice<T>(s: &[u8]) -> Result<T, DeserializeError>
 where
 	T: DeserializeOwned,
 {
-	let (json, _) = Value::parse_slice(s).map_err(DeserializeError::custom)?;
+	let (json, _) = JsonValue::parse_slice(s).map_err(DeserializeError::custom)?;
 	from_value(json)
 }

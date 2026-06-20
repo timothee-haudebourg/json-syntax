@@ -16,29 +16,28 @@ rust-version = "1.71.0"
 default = ["serde"]
 
 ## JSON Canonicalization Scheme (JCS) implementation.
-canonicalize = ["ryu-js", "json-number/canonical"]
+canonicalize = ["dep:ryu-js"]
 
 ## Serialization/Deserialization support using `serde`.
-serde = ["dep:serde", "json-number/serde", "smallstr/serde"]
+serde = ["dep:serde", "smallstr/serde"]
 
 ## Compatibility layer with the `serde_json` crate.
-serde_json = ["dep:serde_json", "json-number/serde_json"]
+serde_json = ["dep:serde_json"]
 
 [package.metadata.docs.rs]
 all-features = true
 
 [dependencies]
 # json-number = { version = "0.4", features = ["smallnumberbuf"] }
-json-number = { path = "/home/timothee/Projets/utils/parsing/json/json-number/", features = [
-	"smallnumberbuf",
-] }
+# json-number = { path = "/home/work/Documents/Community/JSON/number/" }
 smallvec = "1.9"
 smallstr = "0.3"
 locspan = "0.9"
+lexical = { version = "7.0.1", features = [ "format" ] }
 # indexmap = "1.9.1"
 decoded-char = "0.1"
 # hashbrown = { version = "0.12.1", features = ["raw"] }
-btree-indexmap.path = "/home/timothee/Projets/utils/data-structures/btree-indexmap/"
+btree-indexmap.path = "/home/work/Documents/Community/Utils/data-structures/btree-indexmap/"
 utf8-decode = "1.0.1"
 
 # Canonicalization.

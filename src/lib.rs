@@ -28,37 +28,43 @@
 //!
 //! ```
 //! use std::fs;
-//! use json_syntax::{Value, Parse, Print};
+//! use json_syntax::{JsonValue, ParseJson, PrintJson};
 //!
 //! let filename = "tests/inputs/y_structure_500_nested_arrays.json";
 //! let input = fs::read_to_string(filename).unwrap();
-//! let mut value = Value::parse_str(&input).expect("parse error").0;
+//! let mut value = JsonValue::parse_str(&input).expect("parse error").0;
 //! println!("value: {}", value.pretty_print());
 //! ```
-pub use json_number::{InvalidNumber, Number};
-use lexical::{LexicalEq, LexicalPartialEq};
 use smallvec::SmallVec;
 use std::{fmt, str::FromStr};
 
+#[cfg(feature = "canonicalize")]
+pub use ryu_js;
+
 pub mod array;
+mod bytes;
 pub mod code_map;
+mod convert;
+pub mod kind;
 pub mod lexical;
+mod macros;
+pub mod number;
 pub mod object;
 pub mod parse;
-pub use code_map::CodeMap;
-pub use parse::Parse;
 pub mod print;
-pub use print::Print;
-pub mod kind;
-pub use kind::{Kind, KindSet};
-mod convert;
-mod macros;
-pub mod try_from;
+pub mod string;
 pub mod visitor;
 
-pub mod number {
-	pub use json_number::Buffer;
-}
+pub use array::{JsonArray, JsonArrayBuf};
+pub use bytes::JsonBytes;
+pub use code_map::CodeMap;
+pub use kind::{Kind, KindSet};
+use lexical::{BorrowJsonLexical, JsonLexicalEq, JsonLexicalPartialEq};
+pub use number::{InvalidJsonNumber, JsonNumber, JsonNumberBuf};
+pub use object::JsonObject;
+pub use parse::ParseJson;
+pub use print::PrintJson;
+pub use string::JsonString;
 
 #[cfg(feature = "serde")]
 pub mod serde;
@@ -66,40 +72,20 @@ pub mod serde;
 #[cfg(feature = "serde")]
 pub use serde::{from_slice, from_str, from_value, to_value};
 
-/// String stack capacity.
-///
-/// If a string is longer than this value,
-/// it will be stored on the heap.
-pub const SMALL_STRING_CAPACITY: usize = 16;
-
-/// String.
-pub type JsonString = smallstr::SmallString<[u8; SMALL_STRING_CAPACITY]>;
-
-pub use array::Array;
-
-pub use object::Object;
-
-/// Number buffer stack capacity.
-///
-/// If the number is longer than this value,
-/// it will be stored on the heap.
-pub const NUMBER_CAPACITY: usize = SMALL_STRING_CAPACITY;
-
-/// Number buffer.
-pub type NumberBuf = json_number::SmallNumberBuf<NUMBER_CAPACITY>;
+use crate::array::JsonArrayExt;
 
 /// JSON Value.
 ///
 /// # Parsing
 ///
-/// You can parse a `Value` by importing the [`Parse`] trait providing a
+/// You can parse a `Value` by importing the [`ParseJson`] trait providing a
 /// collection of parsing functions.
 ///
 /// ## Example
 ///
 /// ```
-/// use json_syntax::{Value, Parse, CodeMap};
-/// let (value, code_map) = Value::parse_str("{ \"key\": \"value\" }").unwrap();
+/// use json_syntax::{JsonValue, ParseJson, CodeMap};
+/// let (value, code_map) = JsonValue::parse_str("{ \"key\": \"value\" }").unwrap();
 /// ```
 ///
 /// The `code_map` value of type [`CodeMap`] contains code-mapping information
@@ -108,38 +94,36 @@ pub type NumberBuf = json_number::SmallNumberBuf<NUMBER_CAPACITY>;
 ///
 /// # Comparison
 ///
-/// This type implements the usual comparison traits `PartialEq`, `Eq`,
-/// `PartialOrd` and `Ord`. However by default JSON object entries ordering
-/// matters, meaning that `{ "a": 0, "b": 1 }` is **not** equal to
-/// `{ "b": 1, "a": 0 }`.
-/// If you want to do comparisons while ignoring entries ordering, you can use
-/// the [`Unordered`] type (combined with the [`UnorderedPartialEq`] trait).
-/// Any `T` reference can be turned into an [`Unordered<T>`] reference
-/// at will using the [`BorrowUnordered::as_unordered`] method.
+/// The `PartialEq` and `PartialOrd` implementations will compare the JSON
+/// values semantically, without regard for the object entries indexes. The only
+/// exception is when one key has multiple values, in which cases the values are
+/// ordered by index. It is possible to compare the lexical representation of
+/// objects (where the entries indexes matter) by using the
+/// [`BorrowJsonLexical::as_lexical`] method on both ends and comparing the
+/// results.
 ///
 /// ## Example
 ///
 /// ```
-/// use json_syntax::{json, Unordered, BorrowUnordered};
+/// use json_syntax::{json, lexical::BorrowJsonLexical};
 ///
 /// let a = json!({ "a": 0, "b": 1 });
 /// let b = json!({ "b": 1, "a": 0 });
 ///
-/// assert_ne!(a, b); // not equals entries are in a different order.
-/// assert_eq!(a.as_unordered(), b.as_unordered()); // equals modulo entry order.
-/// assert_eq!(Unordered(a), Unordered(b)); // equals modulo entry order.
+/// assert_eq!(a, b); // equals, because semantically equivalent.
+/// assert_ne!(a.as_lexical(), b.as_lexical()); // not equals.
 /// ```
 ///
 /// # Printing
 ///
-/// The [`Print`] trait provide a highly configurable printing method.
+/// The [`PrintJson`] trait provide a highly configurable printing method.
 ///
 /// ## Example
 ///
 /// ```
-/// use json_syntax::{Value, Parse, Print};
+/// use json_syntax::{JsonValue, ParseJson, PrintJson};
 ///
-/// let value = Value::parse_str("[ 0, 1, { \"key\": \"value\" }, null ]").unwrap().0;
+/// let value = JsonValue::parse_str("[ 0, 1, { \"key\": \"value\" }, null ]").unwrap().0;
 ///
 /// println!("{}", value.pretty_print()); // multi line, indent with 2 spaces
 /// println!("{}", value.inline_print()); // single line, spaces
@@ -150,7 +134,7 @@ pub type NumberBuf = json_number::SmallNumberBuf<NUMBER_CAPACITY>;
 /// println!("{}", value.print_with(options)); // multi line, indent with tabs
 /// ```
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub enum Value {
+pub enum JsonValue {
 	/// `null`.
 	Null,
 
@@ -158,36 +142,25 @@ pub enum Value {
 	Boolean(bool),
 
 	/// Number.
-	Number(NumberBuf),
+	Number(JsonNumberBuf),
 
 	/// String.
 	String(JsonString),
 
 	/// Array.
-	Array(Array),
+	Array(JsonArrayBuf),
 
 	/// Object.
-	Object(Object),
+	Object(JsonObject),
 }
 
-pub fn get_array_fragment(array: &[Value], mut index: usize) -> Result<FragmentRef, usize> {
-	for v in array {
-		match v.get_fragment(index) {
-			Ok(value) => return Ok(value),
-			Err(i) => index = i,
-		}
-	}
-
-	Err(index)
-}
-
-impl Value {
-	pub fn get_fragment(&self, index: usize) -> Result<FragmentRef, usize> {
+impl JsonValue {
+	pub fn get_fragment(&self, index: usize) -> Result<JsonFragment<'_>, usize> {
 		if index == 0 {
-			Ok(FragmentRef::Value(self))
+			Ok(JsonFragment::Value(self))
 		} else {
 			match self {
-				Self::Array(a) => get_array_fragment(a, index - 1),
+				Self::Array(a) => a.get_fragment(index - 1),
 				Self::Object(o) => o.get_fragment(index - 1),
 				_ => Err(index - 1),
 			}
@@ -268,7 +241,7 @@ impl Value {
 	}
 
 	#[inline]
-	pub fn as_number(&self) -> Option<&Number> {
+	pub fn as_number(&self) -> Option<&JsonNumber> {
 		match self {
 			Self::Number(n) => Some(n),
 			_ => None,
@@ -276,7 +249,7 @@ impl Value {
 	}
 
 	#[inline]
-	pub fn as_number_mut(&mut self) -> Option<&mut NumberBuf> {
+	pub fn as_number_mut(&mut self) -> Option<&mut JsonNumberBuf> {
 		match self {
 			Self::Number(n) => Some(n),
 			_ => None,
@@ -314,7 +287,7 @@ impl Value {
 	}
 
 	#[inline]
-	pub fn as_array_mut(&mut self) -> Option<&mut Array> {
+	pub fn as_array_mut(&mut self) -> Option<&mut JsonArrayBuf> {
 		match self {
 			Self::Array(a) => Some(a),
 			_ => None,
@@ -334,7 +307,7 @@ impl Value {
 	}
 
 	#[inline]
-	pub fn as_object(&self) -> Option<&Object> {
+	pub fn as_object(&self) -> Option<&JsonObject> {
 		match self {
 			Self::Object(o) => Some(o),
 			_ => None,
@@ -342,7 +315,7 @@ impl Value {
 	}
 
 	#[inline]
-	pub fn as_object_mut(&mut self) -> Option<&mut Object> {
+	pub fn as_object_mut(&mut self) -> Option<&mut JsonObject> {
 		match self {
 			Self::Object(o) => Some(o),
 			_ => None,
@@ -358,7 +331,7 @@ impl Value {
 	}
 
 	#[inline]
-	pub fn into_number(self) -> Option<NumberBuf> {
+	pub fn into_number(self) -> Option<JsonNumberBuf> {
 		match self {
 			Self::Number(n) => Some(n),
 			_ => None,
@@ -374,7 +347,7 @@ impl Value {
 	}
 
 	#[inline]
-	pub fn into_array(self) -> Option<Array> {
+	pub fn into_array(self) -> Option<JsonArrayBuf> {
 		match self {
 			Self::Array(a) => Some(a),
 			_ => None,
@@ -382,21 +355,21 @@ impl Value {
 	}
 
 	#[inline]
-	pub fn into_object(self) -> Option<Object> {
+	pub fn into_object(self) -> Option<JsonObject> {
 		match self {
 			Self::Object(o) => Some(o),
 			_ => None,
 		}
 	}
 
-	pub fn traverse(&self) -> Traverse {
+	pub fn traverse(&self) -> Traverse<'_> {
 		let mut stack = SmallVec::new();
-		stack.push(FragmentRef::Value(self));
+		stack.push(JsonFragment::Value(self));
 		Traverse { offset: 0, stack }
 	}
 
 	/// Recursively count the number of values for which `f` returns `true`.
-	pub fn count(&self, mut f: impl FnMut(usize, FragmentRef) -> bool) -> usize {
+	pub fn count(&self, mut f: impl FnMut(usize, JsonFragment) -> bool) -> usize {
 		self.traverse().filter(|(i, q)| f(*i, *q)).count()
 	}
 
@@ -425,7 +398,7 @@ impl Value {
 	#[cfg(feature = "canonicalize")]
 	pub fn canonicalize_with(&mut self, buffer: &mut ryu_js::Buffer) {
 		match self {
-			Self::Number(n) => *n = NumberBuf::from_number(n.canonical_with(buffer)),
+			Self::Number(n) => n.canonicalize_with(buffer),
 			Self::Array(a) => {
 				for item in a {
 					item.canonicalize_with(buffer)
@@ -443,9 +416,20 @@ impl Value {
 		let mut buffer = ryu_js::Buffer::new();
 		self.canonicalize_with(&mut buffer)
 	}
+
+	/// Returns the canonical form of this value according to
+	/// [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785).
+	#[cfg(feature = "canonicalize")]
+	pub fn canonicalized(&self) -> Self {
+		let mut result = self.clone();
+		result.canonicalize();
+		result
+	}
 }
 
-impl LexicalPartialEq for Value {
+impl BorrowJsonLexical for JsonValue {}
+
+impl JsonLexicalPartialEq for JsonValue {
 	fn lexical_eq(&self, other: &Self) -> bool {
 		match (self, other) {
 			(Self::Null, Self::Null) => true,
@@ -459,69 +443,69 @@ impl LexicalPartialEq for Value {
 	}
 }
 
-impl LexicalEq for Value {}
+impl JsonLexicalEq for JsonValue {}
 
-impl fmt::Display for Value {
+impl fmt::Display for JsonValue {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		self.compact_print().fmt(f)
 	}
 }
 
-impl From<Value> for ::std::string::String {
-	fn from(value: Value) -> Self {
+impl From<JsonValue> for ::std::string::String {
+	fn from(value: JsonValue) -> Self {
 		value.to_string()
 	}
 }
 
-impl From<bool> for Value {
+impl From<bool> for JsonValue {
 	fn from(b: bool) -> Self {
 		Self::Boolean(b)
 	}
 }
 
-impl From<NumberBuf> for Value {
-	fn from(n: NumberBuf) -> Self {
+impl From<JsonNumberBuf> for JsonValue {
+	fn from(n: JsonNumberBuf) -> Self {
 		Self::Number(n)
 	}
 }
 
-impl<'n> From<&'n Number> for Value {
-	fn from(n: &'n Number) -> Self {
-		Self::Number(unsafe { NumberBuf::new_unchecked(n.as_bytes().into()) })
+impl<'n> From<&'n JsonNumber> for JsonValue {
+	fn from(n: &'n JsonNumber) -> Self {
+		Self::Number(unsafe { JsonNumberBuf::new_unchecked(n.as_bytes().into()) })
 	}
 }
 
-impl From<JsonString> for Value {
+impl From<JsonString> for JsonValue {
 	fn from(s: JsonString) -> Self {
 		Self::String(s)
 	}
 }
 
-impl From<::std::string::String> for Value {
+impl From<::std::string::String> for JsonValue {
 	fn from(s: ::std::string::String) -> Self {
 		Self::String(s.into())
 	}
 }
 
-impl<'s> From<&'s str> for Value {
+impl<'s> From<&'s str> for JsonValue {
 	fn from(s: &'s str) -> Self {
 		Self::String(s.into())
 	}
 }
 
-impl From<Array> for Value {
-	fn from(a: Array) -> Self {
+impl From<JsonArrayBuf> for JsonValue {
+	fn from(a: JsonArrayBuf) -> Self {
 		Self::Array(a)
 	}
 }
 
-impl From<Object> for Value {
-	fn from(o: Object) -> Self {
+impl From<JsonObject> for JsonValue {
+	fn from(o: JsonObject) -> Self {
 		Self::Object(o)
 	}
 }
 
-impl FromStr for Value {
+impl FromStr for JsonValue {
 	type Err = parse::Error;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -532,9 +516,9 @@ impl FromStr for Value {
 macro_rules! from_integer {
 	($($ty:ident),*) => {
 		$(
-			impl From<$ty> for Value {
+			impl From<$ty> for JsonValue {
 				fn from(n: $ty) -> Self {
-					Value::Number(n.into())
+					JsonValue::Number(n.into())
 				}
 			}
 		)*
@@ -555,11 +539,11 @@ from_integer! {
 macro_rules! try_from_float {
 	($($ty:ident),*) => {
 		$(
-			impl TryFrom<$ty> for Value {
-				type Error = json_number::TryFromFloatError;
+			impl TryFrom<$ty> for JsonValue {
+				type Error = number::TryFromFloatError;
 
 				fn try_from(n: $ty) -> Result<Self, Self::Error> {
-					Ok(Value::Number(n.try_into()?))
+					Ok(JsonValue::Number(n.try_into()?))
 				}
 			}
 		)*
@@ -571,13 +555,13 @@ try_from_float! {
 	f64
 }
 
-pub enum FragmentRef<'a> {
-	Value(&'a Value),
+pub enum JsonFragment<'a> {
+	Value(&'a JsonValue),
 	Entry(object::EntryRef<'a>),
 	Key(&'a object::Key),
 }
 
-impl<'a> FragmentRef<'a> {
+impl<'a> JsonFragment<'a> {
 	pub fn is_entry(&self) -> bool {
 		matches!(self, Self::Entry(_))
 	}
@@ -591,97 +575,97 @@ impl<'a> FragmentRef<'a> {
 	}
 
 	pub fn is_null(&self) -> bool {
-		matches!(self, Self::Value(Value::Null))
+		matches!(self, Self::Value(JsonValue::Null))
 	}
 
 	pub fn is_number(&self) -> bool {
-		matches!(self, Self::Value(Value::Number(_)))
+		matches!(self, Self::Value(JsonValue::Number(_)))
 	}
 
 	pub fn is_string(&self) -> bool {
-		matches!(self, Self::Value(Value::String(_)))
+		matches!(self, Self::Value(JsonValue::String(_)))
 	}
 
 	pub fn is_array(&self) -> bool {
-		matches!(self, Self::Value(Value::Array(_)))
+		matches!(self, Self::Value(JsonValue::Array(_)))
 	}
 
 	pub fn is_object(&self) -> bool {
-		matches!(self, Self::Value(Value::Object(_)))
+		matches!(self, Self::Value(JsonValue::Object(_)))
 	}
 
-	pub fn strip(self) -> FragmentRef<'a> {
+	pub fn strip(self) -> JsonFragment<'a> {
 		match self {
-			Self::Value(v) => FragmentRef::Value(v),
-			Self::Entry(e) => FragmentRef::Entry(e),
-			Self::Key(k) => FragmentRef::Key(k),
+			Self::Value(v) => JsonFragment::Value(v),
+			Self::Entry(e) => JsonFragment::Entry(e),
+			Self::Key(k) => JsonFragment::Key(k),
 		}
 	}
 }
 
-impl<'a> Clone for FragmentRef<'a> {
+impl<'a> Clone for JsonFragment<'a> {
 	fn clone(&self) -> Self {
 		*self
 	}
 }
 
-impl<'a> Copy for FragmentRef<'a> {}
+impl<'a> Copy for JsonFragment<'a> {}
 
-impl<'a> FragmentRef<'a> {
-	pub fn sub_fragments(&self) -> SubFragments<'a> {
+impl<'a> JsonFragment<'a> {
+	pub fn sub_fragments(&self) -> JsonFragments<'a> {
 		match self {
-			Self::Value(Value::Array(a)) => SubFragments::Array(a.iter()),
-			Self::Value(Value::Object(o)) => SubFragments::Object(o.iter()),
-			Self::Entry((key, value)) => SubFragments::Entry(Some(key), Some(value)),
-			_ => SubFragments::None,
+			Self::Value(JsonValue::Array(a)) => JsonFragments::Array(a.iter()),
+			Self::Value(JsonValue::Object(o)) => JsonFragments::Object(o.iter()),
+			Self::Entry((key, value)) => JsonFragments::Entry(Some(key), Some(value)),
+			_ => JsonFragments::None,
 		}
 	}
 }
 
-pub enum SubFragments<'a> {
+pub enum JsonFragments<'a> {
 	None,
-	Array(core::slice::Iter<'a, Value>),
+	Array(core::slice::Iter<'a, JsonValue>),
 	Object(object::Iter<'a>),
-	Entry(Option<&'a object::Key>, Option<&'a Value>),
+	Entry(Option<&'a object::Key>, Option<&'a JsonValue>),
 }
 
-impl<'a> Iterator for SubFragments<'a> {
-	type Item = FragmentRef<'a>;
+impl<'a> Iterator for JsonFragments<'a> {
+	type Item = JsonFragment<'a>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		match self {
 			Self::None => None,
-			Self::Array(a) => a.next().map(FragmentRef::Value),
-			Self::Object(e) => e.next().map(FragmentRef::Entry),
+			Self::Array(a) => a.next().map(JsonFragment::Value),
+			Self::Object(e) => e.next().map(JsonFragment::Entry),
 			Self::Entry(k, v) => k
 				.take()
-				.map(FragmentRef::Key)
-				.or_else(|| v.take().map(FragmentRef::Value)),
+				.map(JsonFragment::Key)
+				.or_else(|| v.take().map(JsonFragment::Value)),
 		}
 	}
 }
 
-impl<'a> DoubleEndedIterator for SubFragments<'a> {
+impl<'a> DoubleEndedIterator for JsonFragments<'a> {
 	fn next_back(&mut self) -> Option<Self::Item> {
 		match self {
 			Self::None => None,
-			Self::Array(a) => a.next_back().map(FragmentRef::Value),
-			Self::Object(e) => e.next_back().map(FragmentRef::Entry),
+			Self::Array(a) => a.next_back().map(JsonFragment::Value),
+			Self::Object(e) => e.next_back().map(JsonFragment::Entry),
 			Self::Entry(k, v) => v
 				.take()
-				.map(FragmentRef::Value)
-				.or_else(|| k.take().map(FragmentRef::Key)),
+				.map(JsonFragment::Value)
+				.or_else(|| k.take().map(JsonFragment::Key)),
 		}
 	}
 }
 
 pub struct Traverse<'a> {
 	offset: usize,
-	stack: SmallVec<[FragmentRef<'a>; 8]>,
+	stack: SmallVec<[JsonFragment<'a>; 8]>,
 }
 
 impl<'a> Iterator for Traverse<'a> {
-	type Item = (usize, FragmentRef<'a>);
+	type Item = (usize, JsonFragment<'a>);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.stack.pop() {
@@ -702,7 +686,7 @@ mod tests {
 	#[test]
 	fn canonicalize_01() {
 		use super::*;
-		let mut value: Value = json!({
+		let mut value: JsonValue = json!({
 			"b": 0.00000000001,
 			"c": {
 				"foo": true,
@@ -723,7 +707,7 @@ mod tests {
 	#[test]
 	fn canonicalize_02() {
 		use super::*;
-		let (mut value, _) = Value::parse_str(
+		let (mut value, _) = JsonValue::parse_str(
 			"{
 			\"numbers\": [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001],
 			\"string\": \"\\u20ac$\\u000F\\u000aA'\\u0042\\u0022\\u005c\\\\\\\"\\/\",

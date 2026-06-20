@@ -1,4 +1,4 @@
-use super::{Context, Error, Parse, Parser};
+use super::{Context, Error, ParseJson, Parser};
 use decoded_char::DecodedChar;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -7,7 +7,7 @@ pub enum StartFragment {
 	NonEmpty,
 }
 
-impl Parse for StartFragment {
+impl ParseJson for StartFragment {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		_context: Context,

@@ -1,7 +1,6 @@
-use json_number::Number;
 use smallstr::SmallString;
 
-use crate::{Object, Value};
+use crate::{JsonBytes, JsonNumber, JsonNumberBuf, JsonObject, JsonValue};
 
 pub trait JsonVisitor {
 	type Output;
@@ -10,89 +9,89 @@ pub trait JsonVisitor {
 
 	fn visit_bool(self, value: bool) -> Self::Output;
 
-	fn visit_number(self, value: &Number) -> Self::Output;
+	fn visit_number(self, value: &JsonNumber) -> Self::Output;
 
 	fn visit_string(self, value: &str) -> Self::Output;
 
-	fn visit_array<I: IntoIterator<Item: JsonValue>>(self, items: I) -> Self::Output;
+	fn visit_array<I: IntoIterator<Item: VisitJson>>(self, items: I) -> Self::Output;
 
-	fn visit_object<E: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: JsonValue>(
+	fn visit_object<E: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: VisitJson>(
 		self,
 		entries: E,
 	) -> Self::Output;
 }
 
-pub trait JsonValue {
+pub trait VisitJson {
 	fn visit<V: JsonVisitor>(&self, visitor: V) -> V::Output;
 }
 
-impl<T: JsonValue> JsonValue for &T {
+impl<T: VisitJson> VisitJson for &T {
 	fn visit<V: JsonVisitor>(&self, visitor: V) -> V::Output {
 		T::visit(*self, visitor)
 	}
 }
 
-impl JsonValue for () {
+impl VisitJson for () {
 	fn visit<V: JsonVisitor>(&self, visitor: V) -> V::Output {
 		visitor.visit_null()
 	}
 }
 
-impl JsonValue for bool {
+impl VisitJson for bool {
 	fn visit<V: JsonVisitor>(&self, visitor: V) -> V::Output {
 		visitor.visit_bool(*self)
 	}
 }
 
-impl JsonValue for str {
+impl VisitJson for str {
 	fn visit<V: JsonVisitor>(&self, visitor: V) -> V::Output {
 		visitor.visit_string(self)
 	}
 }
 
-impl JsonValue for String {
+impl VisitJson for String {
 	fn visit<V: JsonVisitor>(&self, visitor: V) -> V::Output {
 		visitor.visit_string(self)
 	}
 }
 
-impl<A: smallvec::Array<Item = u8>> JsonValue for SmallString<A> {
+impl<A: smallvec::Array<Item = u8>> VisitJson for SmallString<A> {
 	fn visit<V: JsonVisitor>(&self, visitor: V) -> V::Output {
 		visitor.visit_string(self)
 	}
 }
 
-impl JsonValue for Number {
+impl VisitJson for JsonNumber {
 	fn visit<V: JsonVisitor>(&self, visitor: V) -> V::Output {
 		visitor.visit_number(self)
 	}
 }
 
-impl<B: json_number::Buffer> JsonValue for json_number::NumberBuf<B> {
+impl<B: JsonBytes> VisitJson for JsonNumberBuf<B> {
 	fn visit<V: JsonVisitor>(&self, visitor: V) -> V::Output {
 		visitor.visit_number(self)
 	}
 }
 
-impl<T: JsonValue> JsonValue for [T] {
+impl<T: VisitJson> VisitJson for [T] {
 	fn visit<V: JsonVisitor>(&self, visitor: V) -> V::Output {
 		visitor.visit_array(self)
 	}
 }
 
-impl<T: JsonValue> JsonValue for Vec<T> {
+impl<T: VisitJson> VisitJson for Vec<T> {
 	fn visit<V: JsonVisitor>(&self, visitor: V) -> V::Output {
 		visitor.visit_array(self)
 	}
 }
 
-impl JsonValue for Object {
+impl VisitJson for JsonObject {
 	fn visit<V: JsonVisitor>(&self, visitor: V) -> V::Output {
 		visitor.visit_object(self)
 	}
 }
 
-impl JsonValue for Value {
+impl VisitJson for JsonValue {
 	fn visit<V: JsonVisitor>(&self, visitor: V) -> V::Output {
 		match self {
 			Self::Null => ().visit(visitor),

@@ -1,4 +1,4 @@
-use super::{Context, Error, Parse, Parser};
+use super::{Context, Error, ParseJson, Parser};
 use crate::object::Key;
 use decoded_char::DecodedChar;
 
@@ -8,7 +8,7 @@ pub enum StartFragment {
 	NonEmpty((Key, usize)),
 }
 
-impl Parse for StartFragment {
+impl ParseJson for StartFragment {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		_context: Context,

@@ -259,7 +259,7 @@ impl std::ops::BitAndAssign for KindSet {
 	}
 }
 
-impl<'a> IntoIterator for &'a KindSet {
+impl IntoIterator for &KindSet {
 	type IntoIter = KindSetIter;
 	type Item = Kind;
 

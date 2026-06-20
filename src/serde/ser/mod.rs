@@ -1,11 +1,15 @@
-use serde::{ser::Impossible, Serialize};
-use smallstr::SmallString;
 use std::fmt;
 
-use super::NUMBER_TOKEN;
-use crate::{object::Key, Array, NumberBuf, Object, Value};
+use serde::{ser::Impossible, Serialize};
+use smallstr::SmallString;
 
-impl Serialize for Value {
+use crate::{object::Key, JsonArrayBuf, JsonNumberBuf, JsonObject, JsonValue};
+
+use super::NUMBER_TOKEN;
+
+mod number;
+
+impl Serialize for JsonValue {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: serde::Serializer,
@@ -30,7 +34,7 @@ impl Serialize for Value {
 	}
 }
 
-impl Serialize for Object {
+impl Serialize for JsonObject {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: serde::Serializer,
@@ -74,11 +78,11 @@ impl serde::ser::Error for SerializeError {
 	}
 }
 
-/// [`Value`] serializer.
+/// [`JsonValue`] serializer.
 pub struct Serializer;
 
 impl serde::Serializer for Serializer {
-	type Ok = Value;
+	type Ok = JsonValue;
 	type Error = SerializeError;
 
 	type SerializeSeq = SerializeArray;
@@ -91,7 +95,7 @@ impl serde::Serializer for Serializer {
 
 	#[inline(always)]
 	fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-		Ok(Value::Boolean(v))
+		Ok(JsonValue::Boolean(v))
 	}
 
 	#[inline(always)]
@@ -111,7 +115,7 @@ impl serde::Serializer for Serializer {
 
 	#[inline(always)]
 	fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-		Ok(Value::Number(v.into()))
+		Ok(JsonValue::Number(v.into()))
 	}
 
 	#[inline(always)]
@@ -131,44 +135,44 @@ impl serde::Serializer for Serializer {
 
 	#[inline(always)]
 	fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
-		Ok(Value::Number(v.into()))
+		Ok(JsonValue::Number(v.into()))
 	}
 
 	#[inline(always)]
 	fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
-		Ok(NumberBuf::try_from(v)
-			.map(Value::Number)
-			.unwrap_or(Value::Null))
+		Ok(JsonNumberBuf::try_from(v)
+			.map(JsonValue::Number)
+			.unwrap_or(JsonValue::Null))
 	}
 
 	#[inline(always)]
 	fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
-		Ok(NumberBuf::try_from(v)
-			.map(Value::Number)
-			.unwrap_or(Value::Null))
+		Ok(JsonNumberBuf::try_from(v)
+			.map(JsonValue::Number)
+			.unwrap_or(JsonValue::Null))
 	}
 
 	#[inline(always)]
 	fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
 		let mut s = SmallString::new();
 		s.push(v);
-		Ok(Value::String(s))
+		Ok(JsonValue::String(s))
 	}
 
 	#[inline(always)]
 	fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-		Ok(Value::String(v.into()))
+		Ok(JsonValue::String(v.into()))
 	}
 
 	#[inline(always)]
 	fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
-		let vec = v.iter().map(|&b| Value::Number(b.into())).collect();
-		Ok(Value::Array(vec))
+		let vec = v.iter().map(|&b| JsonValue::Number(b.into())).collect();
+		Ok(JsonValue::Array(vec))
 	}
 
 	#[inline(always)]
 	fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-		Ok(Value::Null)
+		Ok(JsonValue::Null)
 	}
 
 	#[inline(always)]
@@ -209,9 +213,9 @@ impl serde::Serializer for Serializer {
 	where
 		T: ?Sized + Serialize,
 	{
-		let mut obj = Object::new();
+		let mut obj = JsonObject::new();
 		obj.insert(variant, value.serialize(self)?);
-		Ok(Value::Object(obj))
+		Ok(JsonValue::Object(obj))
 	}
 
 	#[inline(always)]
@@ -263,7 +267,7 @@ impl serde::Serializer for Serializer {
 
 	fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
 		Ok(SerializeMap::Object {
-			obj: Object::new(),
+			obj: JsonObject::new(),
 			next_key: None,
 		})
 	}
@@ -285,7 +289,7 @@ impl serde::Serializer for Serializer {
 	) -> Result<Self::SerializeStructVariant, Self::Error> {
 		Ok(SerializeStructVariant {
 			name: variant.into(),
-			obj: Object::new(),
+			obj: JsonObject::new(),
 		})
 	}
 
@@ -293,14 +297,14 @@ impl serde::Serializer for Serializer {
 	where
 		T: ?Sized + fmt::Display,
 	{
-		Ok(Value::String(value.to_string().into()))
+		Ok(JsonValue::String(value.to_string().into()))
 	}
 }
 
 pub struct StringNumberSerializer;
 
 impl serde::Serializer for StringNumberSerializer {
-	type Ok = NumberBuf;
+	type Ok = JsonNumberBuf;
 	type Error = SerializeError;
 
 	type SerializeSeq = serde::ser::Impossible<Self::Ok, Self::Error>;
@@ -360,7 +364,7 @@ impl serde::Serializer for StringNumberSerializer {
 	}
 
 	fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-		NumberBuf::new(v.as_bytes().into())
+		JsonNumberBuf::new(v.as_bytes().into())
 			.map_err(|_| SerializeError::MalformedHighPrecisionNumber)
 	}
 
@@ -654,11 +658,11 @@ impl serde::Serializer for KeySerializer {
 }
 
 pub struct SerializeArray {
-	array: Array,
+	array: JsonArrayBuf,
 }
 
 impl serde::ser::SerializeSeq for SerializeArray {
-	type Ok = Value;
+	type Ok = JsonValue;
 	type Error = SerializeError;
 
 	fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
@@ -670,12 +674,12 @@ impl serde::ser::SerializeSeq for SerializeArray {
 	}
 
 	fn end(self) -> Result<Self::Ok, Self::Error> {
-		Ok(Value::Array(self.array))
+		Ok(JsonValue::Array(self.array))
 	}
 }
 
 impl serde::ser::SerializeTuple for SerializeArray {
-	type Ok = Value;
+	type Ok = JsonValue;
 	type Error = SerializeError;
 
 	fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
@@ -691,7 +695,7 @@ impl serde::ser::SerializeTuple for SerializeArray {
 }
 
 impl serde::ser::SerializeTupleStruct for SerializeArray {
-	type Ok = Value;
+	type Ok = JsonValue;
 	type Error = SerializeError;
 
 	fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
@@ -708,11 +712,11 @@ impl serde::ser::SerializeTupleStruct for SerializeArray {
 
 pub struct SerializeTupleVariant {
 	name: Key,
-	array: Array,
+	array: JsonArrayBuf,
 }
 
 impl serde::ser::SerializeTupleVariant for SerializeTupleVariant {
-	type Ok = Value;
+	type Ok = JsonValue;
 	type Error = SerializeError;
 
 	fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
@@ -724,20 +728,20 @@ impl serde::ser::SerializeTupleVariant for SerializeTupleVariant {
 	}
 
 	fn end(self) -> Result<Self::Ok, Self::Error> {
-		let mut obj = Object::new();
-		obj.insert(self.name, Value::Array(self.array));
+		let mut obj = JsonObject::new();
+		obj.insert(self.name, JsonValue::Array(self.array));
 
-		Ok(Value::Object(obj))
+		Ok(JsonValue::Object(obj))
 	}
 }
 
 pub struct SerializeStructVariant {
 	name: Key,
-	obj: Object,
+	obj: JsonObject,
 }
 
 impl serde::ser::SerializeStructVariant for SerializeStructVariant {
-	type Ok = Value;
+	type Ok = JsonValue;
 	type Error = SerializeError;
 
 	fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
@@ -749,20 +753,23 @@ impl serde::ser::SerializeStructVariant for SerializeStructVariant {
 	}
 
 	fn end(self) -> Result<Self::Ok, Self::Error> {
-		let mut obj = Object::new();
-		obj.insert(self.name, Value::Object(self.obj));
+		let mut obj = JsonObject::new();
+		obj.insert(self.name, JsonValue::Object(self.obj));
 
-		Ok(Value::Object(obj))
+		Ok(JsonValue::Object(obj))
 	}
 }
 
 pub enum SerializeMap {
-	Object { obj: Object, next_key: Option<Key> },
-	Number(Option<NumberBuf>),
+	Object {
+		obj: JsonObject,
+		next_key: Option<Key>,
+	},
+	Number(Option<JsonNumberBuf>),
 }
 
 impl serde::ser::SerializeMap for SerializeMap {
-	type Ok = Value;
+	type Ok = JsonValue;
 	type Error = SerializeError;
 
 	fn serialize_key<T>(&mut self, key: &T) -> Result<(), Self::Error>
@@ -806,15 +813,15 @@ impl serde::ser::SerializeMap for SerializeMap {
 
 	fn end(self) -> Result<Self::Ok, Self::Error> {
 		match self {
-			Self::Number(Some(n)) => Ok(Value::Number(n)),
+			Self::Number(Some(n)) => Ok(JsonValue::Number(n)),
 			Self::Number(None) => Err(SerializeError::MalformedHighPrecisionNumber),
-			Self::Object { obj, .. } => Ok(Value::Object(obj)),
+			Self::Object { obj, .. } => Ok(JsonValue::Object(obj)),
 		}
 	}
 }
 
 impl serde::ser::SerializeStruct for SerializeMap {
-	type Ok = Value;
+	type Ok = JsonValue;
 	type Error = SerializeError;
 
 	fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>

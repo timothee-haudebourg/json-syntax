@@ -1,4 +1,4 @@
-use json_syntax::{json, object::Key, Object, Value};
+use json_syntax::{json, object::Key, JsonObject, JsonValue};
 
 #[test]
 fn macro_01() {
@@ -6,7 +6,7 @@ fn macro_01() {
 		null
 	};
 
-	assert_eq!(value, Value::Null)
+	assert_eq!(value, JsonValue::Null)
 }
 
 #[test]
@@ -15,7 +15,7 @@ fn macro_02() {
 		true
 	};
 
-	assert_eq!(value, Value::Boolean(true))
+	assert_eq!(value, JsonValue::Boolean(true))
 }
 
 #[test]
@@ -24,7 +24,7 @@ fn macro_03() {
 		false
 	};
 
-	assert_eq!(value, Value::Boolean(false))
+	assert_eq!(value, JsonValue::Boolean(false))
 }
 
 #[test]
@@ -33,7 +33,7 @@ fn macro_04() {
 		[]
 	};
 
-	assert_eq!(value, Value::Array(vec![]))
+	assert_eq!(value, JsonValue::Array(vec![]))
 }
 
 #[test]
@@ -42,7 +42,7 @@ fn macro_05() {
 		{}
 	};
 
-	assert_eq!(value, Value::Object(Object::default()))
+	assert_eq!(value, JsonValue::Object(JsonObject::default()))
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn macro_06() {
 		[ null ]
 	};
 
-	assert_eq!(value, Value::Array(vec![Value::Null]))
+	assert_eq!(value, JsonValue::Array(vec![JsonValue::Null]))
 }
 
 #[test]
@@ -62,7 +62,7 @@ fn macro_07() {
 
 	assert_eq!(
 		value,
-		Value::Object(vec![("foo".into(), Value::Null)].into())
+		JsonValue::Object(vec![("foo".into(), JsonValue::Null)].into())
 	)
 }
 
@@ -73,7 +73,7 @@ fn macro_08() {
 		[ item ]
 	};
 
-	assert_eq!(value, Value::Array(vec![Value::Null]))
+	assert_eq!(value, JsonValue::Array(vec![JsonValue::Null]))
 }
 
 #[test]
@@ -84,10 +84,10 @@ fn macro_09() {
 
 	assert_eq!(
 		value,
-		Value::Array(vec![
-			Value::Array(vec![Value::Null]),
-			Value::Boolean(true),
-			Value::Boolean(false)
+		JsonValue::Array(vec![
+			JsonValue::Array(vec![JsonValue::Null]),
+			JsonValue::Boolean(true),
+			JsonValue::Boolean(false)
 		])
 	)
 }
@@ -100,9 +100,9 @@ fn macro_10() {
 
 	assert_eq!(
 		value,
-		Value::Object(Object::from_vec(vec![
-			("a".into(), Value::Boolean(true)),
-			("b".into(), Value::Boolean(false))
+		JsonValue::Object(JsonObject::from_vec(vec![
+			("a".into(), JsonValue::Boolean(true)),
+			("b".into(), JsonValue::Boolean(false))
 		]))
 	)
 }
@@ -118,9 +118,9 @@ fn macro_11() {
 
 	assert_eq!(
 		value,
-		Value::Object(Object::from_vec(vec![
-			("a".into(), Value::Boolean(true)),
-			("b".into(), Value::Boolean(false))
+		JsonValue::Object(JsonObject::from_vec(vec![
+			("a".into(), JsonValue::Boolean(true)),
+			("b".into(), JsonValue::Boolean(false))
 		]))
 	)
 }
@@ -136,10 +136,10 @@ fn macro_12() {
 
 	assert_eq!(
 		value,
-		Value::Object(Object::from_vec(vec![
-			("a".into(), Value::Boolean(true)),
-			("b".into(), Value::Object(Object::default())),
-			("c".into(), Value::Boolean(false))
+		JsonValue::Object(JsonObject::from_vec(vec![
+			("a".into(), JsonValue::Boolean(true)),
+			("b".into(), JsonValue::Object(JsonObject::default())),
+			("c".into(), JsonValue::Boolean(false))
 		]))
 	)
 }
@@ -155,10 +155,10 @@ fn macro_13() {
 
 	assert_eq!(
 		value,
-		Value::Object(Object::from_vec(vec![
-			("a".into(), Value::Boolean(true)),
-			("b".into(), Value::Object(Object::default())),
-			("c".into(), Value::Boolean(false))
+		JsonValue::Object(JsonObject::from_vec(vec![
+			("a".into(), JsonValue::Boolean(true)),
+			("b".into(), JsonValue::Object(JsonObject::default())),
+			("c".into(), JsonValue::Boolean(false))
 		]))
 	)
 }
@@ -171,9 +171,9 @@ fn macro_14() {
 
 	assert_eq!(
 		value,
-		Value::Object(Object::from_vec(vec![
-			("a".into(), Value::Number(0.1f32.try_into().unwrap())),
-			("b".into(), Value::Number(1.1e10f32.try_into().unwrap()))
+		JsonValue::Object(JsonObject::from_vec(vec![
+			("a".into(), JsonValue::Number(0.1f32.try_into().unwrap())),
+			("b".into(), JsonValue::Number(1.1e10f32.try_into().unwrap()))
 		]))
 	)
 }

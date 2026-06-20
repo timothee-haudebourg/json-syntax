@@ -1,7 +1,7 @@
-/// Constructs a `json_syntax::Value` from a JSON literal.
+/// Constructs a `json_syntax::JsonValue` from a JSON literal.
 ///
 /// ```
-/// # use json_syntax::{Value, json};
+/// # use json_syntax::json;
 /// let value = json!({
 ///     "code": 200,
 ///     "success": true,
@@ -17,15 +17,15 @@
 /// Variables or expressions can be interpolated into the JSON literal.
 ///
 /// ```
-/// # use json_syntax::{Value, object::Key, json};
+/// # use json_syntax::{JsonValue, object::Key, json};
 /// let code = 200;
 /// let features = vec!["json", "syntax"];
 ///
 /// let value = json!({
-///     "code": Value::from(code),
-///     "success": Value::from(code == 200),
+///     "code": JsonValue::from(code),
+///     "success": JsonValue::from(code == 200),
 ///     "payload": {
-///         Key::from(features[0]): Value::from(features[1])
+///         Key::from(features[0]): JsonValue::from(features[1])
 ///     }
 /// });
 /// ```
@@ -33,7 +33,7 @@
 /// Trailing commas are allowed inside both arrays and objects.
 ///
 /// ```
-/// # use json_syntax::{Value, json};
+/// # use json_syntax::json;
 /// let value = json!([
 ///     "notice",
 ///     "the",
@@ -121,12 +121,12 @@ macro_rules! json {
 
 	// Done with trailing comma.
 	(@object [$($elems:expr,)*] () () ()) => {
-		$crate::Object::from_vec(json_vec![$($elems,)*])
+		$crate::JsonObject::from_vec(json_vec![$($elems,)*])
 	};
 
 	// Done without trailing comma.
 	(@object [$($elems:expr),*] () () ()) => {
-		$crate::Object::from_vec(json_vec![$($elems),*])
+		$crate::JsonObject::from_vec(json_vec![$($elems),*])
 	};
 
 	// Create an entry literal key.
@@ -232,39 +232,39 @@ macro_rules! json {
 	//////////////////////////////////////////////////////////////////////////
 
 	(null) => {
-		$crate::Value::Null
+		$crate::JsonValue::Null
 	};
 
 	(true) => {
-		$crate::Value::Boolean(true)
+		$crate::JsonValue::Boolean(true)
 	};
 
 	(false) => {
-		$crate::Value::Boolean(false)
+		$crate::JsonValue::Boolean(false)
 	};
 
 	($lit:literal) => {
-		$crate::Value::try_from($lit).unwrap()
+		$crate::JsonValue::try_from($lit).unwrap()
 	};
 
 	([]) => {
-		$crate::Value::Array(json_vec![])
+		$crate::JsonValue::Array(json_vec![])
 	};
 
 	([ $($tt:tt)+ ]) => {
-		$crate::Value::Array(json!(@array [] $($tt)+))
+		$crate::JsonValue::Array(json!(@array [] $($tt)+))
 	};
 
 	({}) => {
-		$crate::Value::Object($crate::Object::new())
+		$crate::JsonValue::Object($crate::JsonObject::new())
 	};
 
 	({ $($tt:tt)+ }) => {
-		$crate::Value::Object(json!(@object [] () ($($tt)+) ($($tt)+)))
+		$crate::JsonValue::Object(json!(@object [] () ($($tt)+) ($($tt)+)))
 	};
 
 	($other:expr) => {
-		$crate::Value::from($other)
+		$crate::JsonValue::from($other)
 	};
 }
 

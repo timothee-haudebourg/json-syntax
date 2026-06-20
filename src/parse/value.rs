@@ -1,18 +1,18 @@
-use super::{array, object, Context, Error, Parse, Parser};
-use crate::{object::Key, Array, JsonString, NumberBuf, Object, Value};
+use super::{array, object, Context, Error, ParseJson, Parser};
+use crate::{object::Key, JsonArrayBuf, JsonNumberBuf, JsonObject, JsonString, JsonValue};
 use decoded_char::DecodedChar;
 
 /// Value fragment.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum Fragment {
-	Value(Value),
+	Value(JsonValue),
 	BeginArray,
 	BeginObject((Key, usize)),
 }
 
 impl Fragment {
 	fn value_or_parse<C, E>(
-		value: Option<(Value, usize)>,
+		value: Option<(JsonValue, usize)>,
 		parser: &mut Parser<C, E>,
 		context: Context,
 	) -> Result<(Self, usize), Error<E>>
@@ -26,13 +26,13 @@ impl Fragment {
 	}
 }
 
-impl From<Value> for Fragment {
-	fn from(v: Value) -> Self {
+impl From<JsonValue> for Fragment {
+	fn from(v: JsonValue) -> Self {
 		Self::Value(v)
 	}
 }
 
-impl Parse for Fragment {
+impl ParseJson for Fragment {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		context: Context,
@@ -45,26 +45,30 @@ impl Parse for Fragment {
 		let (value, i) = match parser.peek_char()? {
 			Some('n') => {
 				let ((), i) = <()>::parse_in(parser, context)?;
-				(Value::Null, i)
+				(JsonValue::Null, i)
 			}
 			Some('t' | 'f') => {
 				let (value, i) = bool::parse_in(parser, context)?;
-				(Value::Boolean(value), i)
+				(JsonValue::Boolean(value), i)
 			}
 			Some('0'..='9' | '-') => {
-				let (value, i) = NumberBuf::parse_in(parser, context)?;
-				(Value::Number(value), i)
+				let (value, i) = JsonNumberBuf::parse_in(parser, context)?;
+				(JsonValue::Number(value), i)
 			}
 			Some('"') => {
 				let (value, i) = JsonString::parse_in(parser, context)?;
-				(Value::String(value), i)
+				(JsonValue::String(value), i)
 			}
 			Some('[') => match array::StartFragment::parse_in(parser, context)? {
-				(array::StartFragment::Empty, span) => (Value::Array(Array::new()), span),
+				(array::StartFragment::Empty, span) => {
+					(JsonValue::Array(JsonArrayBuf::new()), span)
+				}
 				(array::StartFragment::NonEmpty, span) => return Ok((Self::BeginArray, span)),
 			},
 			Some('{') => match object::StartFragment::parse_in(parser, context)? {
-				(object::StartFragment::Empty, span) => (Value::Object(Object::new()), span),
+				(object::StartFragment::Empty, span) => {
+					(JsonValue::Object(JsonObject::new()), span)
+				}
 				(object::StartFragment::NonEmpty(key), span) => {
 					return Ok((Self::BeginObject(key), span))
 				}
@@ -76,7 +80,7 @@ impl Parse for Fragment {
 	}
 }
 
-impl Parse for Value {
+impl ParseJson for JsonValue {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		context: Context,
@@ -85,14 +89,14 @@ impl Parse for Value {
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
 		enum StackItem {
-			Array((Array, usize)),
-			ArrayItem((Array, usize)),
-			Object((Object, usize)),
-			ObjectEntry((Object, usize), (Key, usize)),
+			Array((JsonArrayBuf, usize)),
+			ArrayItem((JsonArrayBuf, usize)),
+			Object((JsonObject, usize)),
+			ObjectEntry((JsonObject, usize), (Key, usize)),
 		}
 
 		let mut stack: Vec<StackItem> = vec![];
-		let mut value: Option<(Value, usize)> = None;
+		let mut value: Option<(JsonValue, usize)> = None;
 
 		fn stack_context(stack: &[StackItem], root: Context) -> Context {
 			match stack.last() {
@@ -118,10 +122,10 @@ impl Parse for Value {
 						};
 					}
 					(Fragment::BeginArray, i) => {
-						stack.push(StackItem::ArrayItem((Array::new(), i)))
+						stack.push(StackItem::ArrayItem((JsonArrayBuf::new(), i)))
 					}
 					(Fragment::BeginObject(key), i) => {
-						stack.push(StackItem::ObjectEntry((Object::new(), i), key))
+						stack.push(StackItem::ObjectEntry((JsonObject::new(), i), key))
 					}
 				},
 				Some(StackItem::Array((array, i))) => {
@@ -129,7 +133,7 @@ impl Parse for Value {
 						array::ContinueFragment::Item => {
 							stack.push(StackItem::ArrayItem((array, i)))
 						}
-						array::ContinueFragment::End => value = Some((Value::Array(array), i)),
+						array::ContinueFragment::End => value = Some((JsonValue::Array(array), i)),
 					}
 				}
 				Some(StackItem::ArrayItem((mut array, i))) => {
@@ -140,11 +144,11 @@ impl Parse for Value {
 						}
 						(Fragment::BeginArray, j) => {
 							stack.push(StackItem::ArrayItem((array, i)));
-							stack.push(StackItem::ArrayItem((Array::new(), j)))
+							stack.push(StackItem::ArrayItem((JsonArrayBuf::new(), j)))
 						}
 						(Fragment::BeginObject(value_key), j) => {
 							stack.push(StackItem::ArrayItem((array, i)));
-							stack.push(StackItem::ObjectEntry((Object::new(), j), value_key))
+							stack.push(StackItem::ObjectEntry((JsonObject::new(), j), value_key))
 						}
 					}
 				}
@@ -153,7 +157,9 @@ impl Parse for Value {
 						object::ContinueFragment::Entry(key) => {
 							stack.push(StackItem::ObjectEntry((object, i), key))
 						}
-						object::ContinueFragment::End => value = Some((Value::Object(object), i)),
+						object::ContinueFragment::End => {
+							value = Some((JsonValue::Object(object), i))
+						}
 					}
 				}
 				Some(StackItem::ObjectEntry((mut object, i), (key, e))) => {
@@ -165,11 +171,11 @@ impl Parse for Value {
 						}
 						(Fragment::BeginArray, j) => {
 							stack.push(StackItem::ObjectEntry((object, i), (key, e)));
-							stack.push(StackItem::ArrayItem((Array::new(), j)))
+							stack.push(StackItem::ArrayItem((JsonArrayBuf::new(), j)))
 						}
 						(Fragment::BeginObject(value_key), j) => {
 							stack.push(StackItem::ObjectEntry((object, i), (key, e)));
-							stack.push(StackItem::ObjectEntry((Object::new(), j), value_key))
+							stack.push(StackItem::ObjectEntry((JsonObject::new(), j), value_key))
 						}
 					}
 				}

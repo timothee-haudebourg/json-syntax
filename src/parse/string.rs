@@ -1,4 +1,4 @@
-use super::{Context, Error, Parse, Parser};
+use super::{Context, Error, ParseJson, Parser};
 use decoded_char::DecodedChar;
 use locspan::Span;
 use smallstr::SmallString;
@@ -38,7 +38,7 @@ where
 	}
 }
 
-impl<A: smallvec::Array<Item = u8>> Parse for SmallString<A> {
+impl<A: smallvec::Array<Item = u8>> ParseJson for SmallString<A> {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		_context: Context,

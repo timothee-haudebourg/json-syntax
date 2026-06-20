@@ -2,7 +2,7 @@ use core::fmt;
 use printer::Printer;
 use sizes::SizesVisitor;
 
-use crate::visitor::JsonValue;
+use crate::visitor::VisitJson;
 
 mod printer;
 mod sizes;
@@ -224,7 +224,7 @@ impl Options {
 }
 
 /// Print methods.
-pub trait Print {
+pub trait PrintJson {
 	/// Print the value with `Options::pretty` options.
 	#[inline(always)]
 	fn pretty_print(&self) -> Printed<'_, Self> {
@@ -252,7 +252,7 @@ pub trait Print {
 	fn fmt_with(&self, f: &mut fmt::Formatter, options: &Options, indent: usize) -> fmt::Result;
 }
 
-impl<T: JsonValue> Print for T {
+impl<T: VisitJson> PrintJson for T {
 	fn fmt_with(&self, f: &mut fmt::Formatter, options: &Options, indent: usize) -> fmt::Result {
 		let mut sizes = Vec::new();
 		self.visit(SizesVisitor::new(options, &mut sizes));
@@ -264,7 +264,7 @@ impl<T: JsonValue> Print for T {
 /// Printed value.
 pub struct Printed<'t, T: ?Sized>(&'t T, Options, usize);
 
-impl<T: Print> fmt::Display for Printed<'_, T> {
+impl<T: PrintJson> fmt::Display for Printed<'_, T> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		self.0.fmt_with(f, &self.1, self.2)
 	}

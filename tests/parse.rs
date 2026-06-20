@@ -1,4 +1,4 @@
-use json_syntax::{parse::Options, Parse, Value};
+use json_syntax::{parse::Options, JsonValue, ParseJson};
 use std::fmt::Debug;
 use std::fs;
 use std::path::Path;
@@ -11,7 +11,7 @@ fn test<P: Clone + AsRef<Path> + Debug>(filename: P, options: Options) {
 		std::borrow::Cow::Borrowed(std::str::from_utf8(&buffer).unwrap())
 	};
 
-	Value::parse_str_with(&input, options).expect("parse error");
+	JsonValue::parse_str_with(&input, options).expect("parse error");
 }
 
 #[test]

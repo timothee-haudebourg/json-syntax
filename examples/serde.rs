@@ -1,7 +1,7 @@
-//! This example shows how to serialize and deserialize `json_syntax::Value`
+//! This example shows how to serialize and deserialize `JsonValue`
 //! using the `serde` crate. This will not allow you to attach metadata to each
 //! value fragment (the `M` type will be unit `()`).
-use json_syntax::Print;
+use json_syntax::PrintJson;
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct MyType {

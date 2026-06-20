@@ -1,6 +1,6 @@
 use crate::code_map::Mapped;
-use crate::lexical::{LexicalEq, LexicalHash, LexicalPartialEq};
-use crate::{CodeMap, FragmentRef, Value};
+use crate::lexical::{BorrowJsonLexical, JsonLexicalEq, JsonLexicalHash, JsonLexicalPartialEq};
+use crate::{CodeMap, JsonFragment, JsonValue};
 use btree_indexmap::{BTreeIndexMultiMap, Comparable};
 use core::fmt;
 use core::hash::{Hash, Hasher};
@@ -17,25 +17,25 @@ pub const KEY_CAPACITY: usize = 16;
 pub type Key = smallstr::SmallString<[u8; KEY_CAPACITY]>;
 
 /// Object entry.
-pub type Entry = (Key, Value);
+pub type Entry = (Key, JsonValue);
 
 /// Object entry reference.
-pub type EntryRef<'a> = (&'a Key, &'a Value);
+pub type EntryRef<'a> = (&'a Key, &'a JsonValue);
 
-fn entry_ref((k, v): &Entry) -> EntryRef {
+fn entry_ref((k, v): &Entry) -> EntryRef<'_> {
 	(k, v)
 }
 
-fn get_entry_fragment<'a>(entry: &'a Entry, index: usize) -> Result<FragmentRef<'a>, usize> {
+fn get_entry_fragment<'a>(entry: &'a Entry, index: usize) -> Result<JsonFragment<'a>, usize> {
 	match index {
-		0 => Ok(FragmentRef::Entry(entry_ref(entry))),
-		1 => Ok(FragmentRef::Key(&entry.0)),
+		0 => Ok(JsonFragment::Entry(entry_ref(entry))),
+		1 => Ok(JsonFragment::Key(&entry.0)),
 		_ => entry.1.get_fragment(index - 2),
 	}
 }
 
 /// Object entry, with code map information.
-pub type MappedEntry = Mapped<(Mapped<Key>, Mapped<Value>)>;
+pub type MappedEntry = Mapped<(Mapped<Key>, Mapped<JsonValue>)>;
 
 fn mapped_entry(
 	(key, value): Entry,
@@ -50,7 +50,7 @@ fn mapped_entry(
 }
 
 /// Object entry reference, with code map information.
-pub type MappedEntryRef<'a> = Mapped<(Mapped<&'a Key>, Mapped<&'a Value>)>;
+pub type MappedEntryRef<'a> = Mapped<(Mapped<&'a Key>, Mapped<&'a JsonValue>)>;
 
 fn mapped_entry_ref(
 	(key, value): EntryRef,
@@ -66,15 +66,25 @@ fn mapped_entry_ref(
 
 pub type IndexedMappedEntry<'a> = (usize, MappedEntryRef<'a>);
 
-pub type IndexedMappedValue<'a> = (usize, Mapped<&'a Value>);
+pub type IndexedMappedValue<'a> = (usize, Mapped<&'a JsonValue>);
 
-/// Object.
+/// JSON object.
+///
+/// # Comparison
+///
+/// The `PartialEq` and `PartialOrd` implementations will compare the JSON
+/// objects semantically, without regard for the entries indexes. The only
+/// exception is when one key has multiple values, in which cases the values are
+/// ordered by index. It is possible to compare the lexical representation of
+/// objects (where the entries indexes matter) by using the
+/// [`BorrowJsonLexical::as_lexical`] method on both ends and comparing the
+/// results.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Object {
-	map: BTreeIndexMultiMap<Key, Value>,
+pub struct JsonObject {
+	map: BTreeIndexMultiMap<Key, JsonValue>,
 }
 
-impl Default for Object {
+impl Default for JsonObject {
 	fn default() -> Self {
 		Self {
 			map: BTreeIndexMultiMap::new(),
@@ -82,12 +92,12 @@ impl Default for Object {
 	}
 }
 
-impl Object {
+impl JsonObject {
 	pub fn new() -> Self {
 		Self::default()
 	}
 
-	pub fn from_vec(entries: Vec<(Key, Value)>) -> Self {
+	pub fn from_vec(entries: Vec<(Key, JsonValue)>) -> Self {
 		Self {
 			map: entries.into_iter().collect(),
 		}
@@ -105,7 +115,7 @@ impl Object {
 		self.map.is_empty()
 	}
 
-	pub fn get_fragment(&self, mut index: usize) -> Result<FragmentRef, usize> {
+	pub fn get_fragment(&self, mut index: usize) -> Result<JsonFragment<'_>, usize> {
 		for e in self.map.as_entries() {
 			match get_entry_fragment(e, index) {
 				Ok(value) => return Ok(value),
@@ -120,11 +130,11 @@ impl Object {
 		self.map.as_entries()
 	}
 
-	pub fn iter(&self) -> Iter {
+	pub fn iter(&self) -> Iter<'_> {
 		self.map.iter()
 	}
 
-	pub fn iter_mut(&mut self) -> IterMut {
+	pub fn iter_mut(&mut self) -> IterMut<'_> {
 		self.map.iter_mut()
 	}
 
@@ -157,7 +167,7 @@ impl Object {
 	/// Returns an iterator over the values matching the given key.
 	///
 	/// Runs in `O(log(n))` (average).
-	pub fn get<Q>(&self, key: &Q) -> Get
+	pub fn get<Q>(&self, key: &Q) -> Get<'_>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -167,7 +177,7 @@ impl Object {
 	/// Returns an iterator over the values matching the given key.
 	///
 	/// Runs in `O(log(n))` (average).
-	pub fn get_mut<Q>(&mut self, key: &Q) -> GetMut
+	pub fn get_mut<Q>(&mut self, key: &Q) -> GetMut<'_>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -179,7 +189,7 @@ impl Object {
 	/// Returns an error if multiple entries match the key.
 	///
 	/// Runs in `O(log(n))` (average).
-	pub fn get_unique<Q>(&self, key: &Q) -> Result<Option<&Value>, DuplicateEntry<EntryRef>>
+	pub fn get_unique<Q>(&self, key: &Q) -> Result<Option<&JsonValue>, DuplicateEntry<EntryRef<'_>>>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -187,7 +197,7 @@ impl Object {
 
 		match entries.next() {
 			Some(entry) => match entries.next() {
-				Some(duplicate) => Err(DuplicateEntry(entry, duplicate)),
+				Some(duplicate) => Err(DuplicateEntry::new(entry, duplicate)),
 				None => Ok(Some(entry.1)),
 			},
 			None => Ok(None),
@@ -202,7 +212,7 @@ impl Object {
 	pub fn get_unique_mut<Q>(
 		&mut self,
 		key: &Q,
-	) -> Result<Option<&mut Value>, DuplicateEntry<EntryRef>>
+	) -> Result<Option<&mut JsonValue>, DuplicateEntry<EntryRef<'_>>>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -213,7 +223,7 @@ impl Object {
 				Some(duplicate) => {
 					let entry = (entry.0, &*entry.1);
 					let duplicate = (duplicate.0, &*duplicate.1);
-					Err(DuplicateEntry(entry, duplicate))
+					Err(DuplicateEntry::new(entry, duplicate))
 				}
 				None => Ok(Some(entry.1)),
 			},
@@ -224,7 +234,7 @@ impl Object {
 	/// Returns an iterator over the entries matching the given key.
 	///
 	/// Runs in `O(log(n))` (average).
-	pub fn get_entries<Q>(&self, key: &Q) -> GetEntries
+	pub fn get_entries<Q>(&self, key: &Q) -> GetEntries<'_>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -236,7 +246,10 @@ impl Object {
 	/// Returns an error if multiple entries match the key.
 	///
 	/// Runs in `O(log(n))` (average).
-	pub fn get_unique_entry<Q>(&self, key: &Q) -> Result<Option<EntryRef>, DuplicateEntry<EntryRef>>
+	pub fn get_unique_entry<Q>(
+		&self,
+		key: &Q,
+	) -> Result<Option<EntryRef<'_>>, DuplicateEntry<EntryRef<'_>>>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -244,7 +257,7 @@ impl Object {
 
 		match entries.next() {
 			Some(entry) => match entries.next() {
-				Some(duplicate) => Err(DuplicateEntry(entry, duplicate)),
+				Some(duplicate) => Err(DuplicateEntry::new(entry, duplicate)),
 				None => Ok(Some(entry)),
 			},
 			None => Ok(None),
@@ -254,7 +267,7 @@ impl Object {
 	/// Returns an iterator over the values matching the given key.
 	///
 	/// Runs in `O(log(n))` (average).
-	pub fn get_indexed<Q>(&self, key: &Q) -> GetIndexed
+	pub fn get_indexed<Q>(&self, key: &Q) -> GetIndexed<'_>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -264,7 +277,7 @@ impl Object {
 	/// Returns an iterator over the entries matching the given key.
 	///
 	/// Runs in `O(log(n))` (average).
-	pub fn get_indexed_entries<Q>(&self, key: &Q) -> GetIndexedEntries
+	pub fn get_indexed_entries<Q>(&self, key: &Q) -> GetIndexedEntries<'_>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -273,7 +286,11 @@ impl Object {
 
 	/// Returns the (first) value associated to `key`, or insert a `key`-`value`
 	/// entry where `value` is returned by the given function `f`.
-	pub fn get_or_insert_with<Q>(&mut self, key: impl Into<Key>, f: impl FnOnce() -> Value) -> Get {
+	pub fn get_or_insert_with<Q>(
+		&mut self,
+		key: impl Into<Key>,
+		f: impl FnOnce() -> JsonValue,
+	) -> Get<'_> {
 		self.map.get_or_insert_with(key.into(), f)
 	}
 
@@ -283,8 +300,8 @@ impl Object {
 	pub fn get_or_insert_mut_with<Q>(
 		&mut self,
 		key: impl Into<Key>,
-		f: impl FnOnce() -> Value,
-	) -> GetMut {
+		f: impl FnOnce() -> JsonValue,
+	) -> GetMut<'_> {
 		self.map.get_or_insert_mut_with(key.into(), f)
 	}
 
@@ -295,7 +312,7 @@ impl Object {
 		self.map.index_of(key)
 	}
 
-	pub fn indexes_of<Q>(&self, key: &Q) -> IndexesIter
+	pub fn indexes_of<Q>(&self, key: &Q) -> IndexesIter<'_>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -340,7 +357,7 @@ impl Object {
 		code_map: &CodeMap,
 		offset: usize,
 		key: &Q,
-	) -> Result<Option<MappedEntryRef>, DuplicateEntry<MappedEntryRef>>
+	) -> Result<Option<MappedEntryRef<'_>>, DuplicateEntry<MappedEntryRef<'_>>>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -348,7 +365,7 @@ impl Object {
 
 		match entries.next() {
 			Some(entry) => match entries.next() {
-				Some(duplicate) => Err(DuplicateEntry(entry, duplicate)),
+				Some(duplicate) => Err(DuplicateEntry::new(entry, duplicate)),
 				None => Ok(Some(entry)),
 			},
 			None => Ok(None),
@@ -387,7 +404,7 @@ impl Object {
 		code_map: &CodeMap,
 		offset: usize,
 		key: &Q,
-	) -> Result<Option<IndexedMappedEntry>, DuplicateEntry<IndexedMappedEntry>>
+	) -> Result<Option<IndexedMappedEntry<'_>>, DuplicateEntry<IndexedMappedEntry<'_>>>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -395,7 +412,7 @@ impl Object {
 
 		match entries.next() {
 			Some(entry) => match entries.next() {
-				Some(duplicate) => Err(DuplicateEntry(entry, duplicate)),
+				Some(duplicate) => Err(DuplicateEntry::new(entry, duplicate)),
 				None => Ok(Some(entry)),
 			},
 			None => Ok(None),
@@ -433,7 +450,7 @@ impl Object {
 		code_map: &CodeMap,
 		offset: usize,
 		key: &Q,
-	) -> Result<Option<Mapped<&Value>>, DuplicateEntry<Mapped<&Value>>>
+	) -> Result<Option<Mapped<&JsonValue>>, DuplicateEntry<Mapped<&JsonValue>>>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -441,7 +458,7 @@ impl Object {
 
 		match entries.next() {
 			Some(entry) => match entries.next() {
-				Some(duplicate) => Err(DuplicateEntry(entry, duplicate)),
+				Some(duplicate) => Err(DuplicateEntry::new(entry, duplicate)),
 				None => Ok(Some(entry)),
 			},
 			None => Ok(None),
@@ -480,7 +497,7 @@ impl Object {
 		code_map: &CodeMap,
 		offset: usize,
 		key: &Q,
-	) -> Result<Option<IndexedMappedValue>, DuplicateEntry<IndexedMappedValue>>
+	) -> Result<Option<IndexedMappedValue<'_>>, DuplicateEntry<IndexedMappedValue<'_>>>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -488,18 +505,18 @@ impl Object {
 
 		match entries.next() {
 			Some(entry) => match entries.next() {
-				Some(duplicate) => Err(DuplicateEntry(entry, duplicate)),
+				Some(duplicate) => Err(DuplicateEntry::new(entry, duplicate)),
 				None => Ok(Some(entry)),
 			},
 			None => Ok(None),
 		}
 	}
 
-	pub fn first(&self) -> Option<EntryRef> {
+	pub fn first(&self) -> Option<EntryRef<'_>> {
 		self.map.first()
 	}
 
-	pub fn last(&self) -> Option<EntryRef> {
+	pub fn last(&self) -> Option<EntryRef<'_>> {
 		self.map.last()
 	}
 
@@ -511,7 +528,7 @@ impl Object {
 	/// are preserved, in order.
 	///
 	/// Runs in `O(1)`.
-	pub fn push_back(&mut self, key: impl Into<Key>, value: Value) -> (usize, bool) {
+	pub fn push_back(&mut self, key: impl Into<Key>, value: JsonValue) -> (usize, bool) {
 		self.map.push_back(key.into(), value)
 	}
 
@@ -527,7 +544,7 @@ impl Object {
 	/// are preserved, in order.
 	///
 	/// Runs in `O(n)`.
-	pub fn push_front(&mut self, key: impl Into<Key>, value: Value) -> bool {
+	pub fn push_front(&mut self, key: impl Into<Key>, value: JsonValue) -> bool {
 		self.map.push_front(key.into(), value)
 	}
 
@@ -550,11 +567,11 @@ impl Object {
 	/// If one or more entries are already matching the given key,
 	/// all of them are removed and returned in the resulting iterator.
 	/// Otherwise, `None` is returned.
-	pub fn shift_insert(&mut self, key: impl Into<Key>, value: Value) -> ShiftInsert {
+	pub fn shift_insert(&mut self, key: impl Into<Key>, value: JsonValue) -> ShiftInsert<'_> {
 		self.map.shift_insert(key.into(), value)
 	}
 
-	pub fn swap_insert(&mut self, key: impl Into<Key>, value: Value) -> SwapInsert {
+	pub fn swap_insert(&mut self, key: impl Into<Key>, value: JsonValue) -> SwapInsert<'_> {
 		self.map.swap_insert(key.into(), value)
 	}
 
@@ -562,44 +579,60 @@ impl Object {
 	///
 	/// If one or more entries are already matching the given key,
 	/// all of them are removed and returned in the resulting iterator.
-	pub fn shift_insert_front(&mut self, key: impl Into<Key>, value: Value) -> ShiftInsertFront {
+	pub fn shift_insert_front(
+		&mut self,
+		key: impl Into<Key>,
+		value: JsonValue,
+	) -> ShiftInsertFront<'_> {
 		self.map.shift_insert_front(key.into(), value)
 	}
 
-	pub fn swap_insert_front(&mut self, key: impl Into<Key>, value: Value) -> SwapInsertFront {
+	pub fn swap_insert_front(
+		&mut self,
+		key: impl Into<Key>,
+		value: JsonValue,
+	) -> SwapInsertFront<'_> {
 		self.map.swap_insert_front(key.into(), value)
 	}
 
 	pub fn shift_insert_back_full(
 		&mut self,
 		key: impl Into<Key>,
-		value: Value,
-	) -> (usize, ShiftInsertBack) {
+		value: JsonValue,
+	) -> (usize, ShiftInsertBack<'_>) {
 		self.map.shift_insert_back_full(key.into(), value)
 	}
 
-	pub fn shift_insert_back(&mut self, key: impl Into<Key>, value: Value) -> ShiftInsertBack {
+	pub fn shift_insert_back(
+		&mut self,
+		key: impl Into<Key>,
+		value: JsonValue,
+	) -> ShiftInsertBack<'_> {
 		self.map.shift_insert_back(key.into(), value)
 	}
 
 	/// Alias of [`Self::shift_insert_back`].
-	pub fn insert(&mut self, key: impl Into<Key>, value: Value) -> ShiftInsertBack {
+	pub fn insert(&mut self, key: impl Into<Key>, value: JsonValue) -> ShiftInsertBack<'_> {
 		self.shift_insert_back(key, value)
 	}
 
 	pub fn swap_insert_back_full(
 		&mut self,
 		key: impl Into<Key>,
-		value: Value,
-	) -> (usize, SwapInsertBack) {
+		value: JsonValue,
+	) -> (usize, SwapInsertBack<'_>) {
 		self.map.swap_insert_back_full(key.into(), value)
 	}
 
-	pub fn swap_insert_back(&mut self, key: impl Into<Key>, value: Value) -> SwapInsertBack {
+	pub fn swap_insert_back(
+		&mut self,
+		key: impl Into<Key>,
+		value: JsonValue,
+	) -> SwapInsertBack<'_> {
 		self.map.swap_insert_back(key.into(), value)
 	}
 
-	pub fn shift_remove_indexed_entries<'q, Q>(&mut self, key: &'q Q) -> ShiftRemoveIndexedEntries
+	pub fn shift_remove_indexed_entries<Q>(&mut self, key: &Q) -> ShiftRemoveIndexedEntries<'_>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -607,7 +640,7 @@ impl Object {
 	}
 
 	/// Remove all entries associated to the given key.
-	pub fn shift_remove_entries<'q, Q>(&mut self, key: &'q Q) -> ShiftRemoveEntries
+	pub fn shift_remove_entries<Q>(&mut self, key: &Q) -> ShiftRemoveEntries<'_>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -615,7 +648,7 @@ impl Object {
 	}
 
 	/// Remove all entries associated to the given key.
-	pub fn shift_remove<'q, Q>(&mut self, key: &'q Q) -> ShiftRemove
+	pub fn shift_remove<Q>(&mut self, key: &Q) -> ShiftRemove<'_>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -623,7 +656,7 @@ impl Object {
 	}
 
 	/// Alias of [`Self::shift_remove`].
-	pub fn remove<'q, Q>(&mut self, key: &'q Q) -> ShiftRemove
+	pub fn remove<Q>(&mut self, key: &Q) -> ShiftRemove<'_>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -631,31 +664,28 @@ impl Object {
 	}
 
 	/// Alias of [`Self::shift_remove_unique`].
-	pub fn remove_unique<'q, Q>(
-		&mut self,
-		key: &'q Q,
-	) -> Result<Option<Entry>, DuplicateEntry<Entry>>
+	pub fn remove_unique<Q>(&mut self, key: &Q) -> Result<Option<Entry>, DuplicateEntry<Entry>>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
 		self.shift_remove_unique(key)
 	}
 
-	pub fn swap_remove_indexed_entries<'q, Q>(&mut self, key: &'q Q) -> SwapRemoveIndexedEntries
+	pub fn swap_remove_indexed_entries<Q>(&mut self, key: &Q) -> SwapRemoveIndexedEntries<'_>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
 		self.map.swap_remove_indexed_entries(key)
 	}
 
-	pub fn swap_remove_entries<'q, Q>(&mut self, key: &'q Q) -> SwapRemoveEntries
+	pub fn swap_remove_entries<Q>(&mut self, key: &Q) -> SwapRemoveEntries<'_>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
 		self.map.swap_remove_entries(key)
 	}
 
-	pub fn swap_remove<'q, Q>(&mut self, key: &'q Q) -> SwapRemove
+	pub fn swap_remove<Q>(&mut self, key: &Q) -> SwapRemove<'_>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -673,7 +703,7 @@ impl Object {
 
 		match entries.next() {
 			Some(entry) => match entries.next() {
-				Some(duplicate) => Err(DuplicateEntry(entry, duplicate)),
+				Some(duplicate) => Err(DuplicateEntry::new(entry, duplicate)),
 				None => Ok(Some(entry)),
 			},
 			None => Ok(None),
@@ -694,7 +724,7 @@ impl Object {
 
 		match entries.next() {
 			Some(entry) => match entries.next() {
-				Some(duplicate) => Err(DuplicateEntry(entry, duplicate)),
+				Some(duplicate) => Err(DuplicateEntry::new(entry, duplicate)),
 				None => Ok(Some(entry)),
 			},
 			None => Ok(None),
@@ -731,47 +761,47 @@ impl Object {
 	}
 }
 
-pub type Iter<'a> = btree_indexmap::multi_map::Iter<'a, Key, Value>;
+pub type Iter<'a> = btree_indexmap::multi_map::Iter<'a, Key, JsonValue>;
 
-pub type IterMut<'a> = btree_indexmap::multi_map::IterMut<'a, Key, Value>;
+pub type IterMut<'a> = btree_indexmap::multi_map::IterMut<'a, Key, JsonValue>;
 
-pub type IntoIter = btree_indexmap::multi_map::IntoIter<Key, Value>;
+pub type IntoIter = btree_indexmap::multi_map::IntoIter<Key, JsonValue>;
 
-pub type Get<'a> = btree_indexmap::multi_map::Get<'a, Key, Value>;
+pub type Get<'a> = btree_indexmap::multi_map::Get<'a, Key, JsonValue>;
 
-pub type GetIndexed<'a> = btree_indexmap::multi_map::GetIndexed<'a, Key, Value>;
+pub type GetIndexed<'a> = btree_indexmap::multi_map::GetIndexed<'a, Key, JsonValue>;
 
-pub type GetEntries<'a> = btree_indexmap::multi_map::GetEntries<'a, Key, Value>;
+pub type GetEntries<'a> = btree_indexmap::multi_map::GetEntries<'a, Key, JsonValue>;
 
-pub type GetIndexedEntries<'a> = btree_indexmap::multi_map::GetIndexedEntries<'a, Key, Value>;
+pub type GetIndexedEntries<'a> = btree_indexmap::multi_map::GetIndexedEntries<'a, Key, JsonValue>;
 
-pub type GetMut<'a> = btree_indexmap::multi_map::GetMut<'a, Key, Value>;
+pub type GetMut<'a> = btree_indexmap::multi_map::GetMut<'a, Key, JsonValue>;
 
-pub type ShiftInsert<'a> = btree_indexmap::multi_map::ShiftInsert<'a, Key, Value>;
+pub type ShiftInsert<'a> = btree_indexmap::multi_map::ShiftInsert<'a, Key, JsonValue>;
 
-pub type SwapInsert<'a> = btree_indexmap::multi_map::SwapInsert<'a, Key, Value>;
+pub type SwapInsert<'a> = btree_indexmap::multi_map::SwapInsert<'a, Key, JsonValue>;
 
-pub type ShiftInsertBack<'a> = btree_indexmap::multi_map::ShiftInsertBack<'a, Key, Value>;
+pub type ShiftInsertBack<'a> = btree_indexmap::multi_map::ShiftInsertBack<'a, Key, JsonValue>;
 
-pub type SwapInsertBack<'a> = btree_indexmap::multi_map::SwapInsertBack<'a, Key, Value>;
+pub type SwapInsertBack<'a> = btree_indexmap::multi_map::SwapInsertBack<'a, Key, JsonValue>;
 
-pub type ShiftInsertFront<'a> = btree_indexmap::multi_map::ShiftInsertFront<'a, Key, Value>;
+pub type ShiftInsertFront<'a> = btree_indexmap::multi_map::ShiftInsertFront<'a, Key, JsonValue>;
 
-pub type SwapInsertFront<'a> = btree_indexmap::multi_map::SwapInsertFront<'a, Key, Value>;
+pub type SwapInsertFront<'a> = btree_indexmap::multi_map::SwapInsertFront<'a, Key, JsonValue>;
 
 pub type ShiftRemoveIndexedEntries<'a> =
-	btree_indexmap::multi_map::ShiftRemoveIndexedEntries<'a, Key, Value>;
+	btree_indexmap::multi_map::ShiftRemoveIndexedEntries<'a, Key, JsonValue>;
 
-pub type ShiftRemoveEntries<'a> = btree_indexmap::multi_map::ShiftRemoveEntries<'a, Key, Value>;
+pub type ShiftRemoveEntries<'a> = btree_indexmap::multi_map::ShiftRemoveEntries<'a, Key, JsonValue>;
 
-pub type ShiftRemove<'a> = btree_indexmap::multi_map::ShiftRemove<'a, Key, Value>;
+pub type ShiftRemove<'a> = btree_indexmap::multi_map::ShiftRemove<'a, Key, JsonValue>;
 
 pub type SwapRemoveIndexedEntries<'a> =
-	btree_indexmap::multi_map::SwapRemoveIndexedEntries<'a, Key, Value>;
+	btree_indexmap::multi_map::SwapRemoveIndexedEntries<'a, Key, JsonValue>;
 
-pub type SwapRemoveEntries<'a> = btree_indexmap::multi_map::SwapRemoveEntries<'a, Key, Value>;
+pub type SwapRemoveEntries<'a> = btree_indexmap::multi_map::SwapRemoveEntries<'a, Key, JsonValue>;
 
-pub type SwapRemove<'a> = btree_indexmap::multi_map::SwapRemove<'a, Key, Value>;
+pub type SwapRemove<'a> = btree_indexmap::multi_map::SwapRemove<'a, Key, JsonValue>;
 
 pub struct IterMapped<'a, 'm> {
 	entries: Iter<'a>,
@@ -818,7 +848,7 @@ macro_rules! mapped_entries_iter {
 		$(
 			pub struct $id<$lft, 'm> {
 				indexes: IndexesIter<$lft>,
-				object: &$lft Object,
+				object: &$lft JsonObject,
 				code_map: &'m CodeMap,
 				offset: usize,
 				last_index: usize
@@ -863,7 +893,7 @@ mapped_entries_iter! {
 	}
 
 	GetMapped<'a> {
-		type Item = Mapped<&'a Value>;
+		type Item = Mapped<&'a JsonValue>;
 
 		fn next(&mut self, index) {
 			Mapped(
@@ -874,7 +904,7 @@ mapped_entries_iter! {
 	}
 
 	GetIndexedMapped<'a> {
-		type Item = (usize, Mapped<&'a Value>);
+		type Item = (usize, Mapped<&'a JsonValue>);
 
 		fn next(&mut self, index) {
 			(
@@ -888,39 +918,41 @@ mapped_entries_iter! {
 	}
 }
 
-impl LexicalPartialEq for Object {
+impl BorrowJsonLexical for JsonObject {}
+
+impl JsonLexicalPartialEq for JsonObject {
 	fn lexical_eq(&self, other: &Self) -> bool {
 		self.map.as_entries().eq(other.map.as_entries())
 	}
 }
 
-impl LexicalEq for Object {}
+impl JsonLexicalEq for JsonObject {}
 
-impl Hash for Object {
+impl Hash for JsonObject {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.map.hash(state);
 	}
 }
 
-impl LexicalHash for Object {
+impl JsonLexicalHash for JsonObject {
 	fn lexical_hash<H: Hasher>(&self, state: &mut H) {
 		self.map.as_entries().hash(state)
 	}
 }
 
-impl fmt::Debug for Object {
+impl fmt::Debug for JsonObject {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		f.debug_map().entries(self.map.iter()).finish()
 	}
 }
 
-impl From<Vec<Entry>> for Object {
+impl From<Vec<Entry>> for JsonObject {
 	fn from(entries: Vec<Entry>) -> Self {
 		Self::from_vec(entries)
 	}
 }
 
-impl<'a> IntoIterator for &'a Object {
+impl<'a> IntoIterator for &'a JsonObject {
 	type Item = EntryRef<'a>;
 	type IntoIter = Iter<'a>;
 
@@ -929,8 +961,8 @@ impl<'a> IntoIterator for &'a Object {
 	}
 }
 
-impl<'a> IntoIterator for &'a mut Object {
-	type Item = (&'a Key, &'a mut Value);
+impl<'a> IntoIterator for &'a mut JsonObject {
+	type Item = (&'a Key, &'a mut JsonValue);
 	type IntoIter = IterMut<'a>;
 
 	fn into_iter(self) -> Self::IntoIter {
@@ -938,7 +970,7 @@ impl<'a> IntoIterator for &'a mut Object {
 	}
 }
 
-impl IntoIterator for Object {
+impl IntoIterator for JsonObject {
 	type Item = Entry;
 	type IntoIter = std::vec::IntoIter<Entry>;
 
@@ -947,7 +979,7 @@ impl IntoIterator for Object {
 	}
 }
 
-impl Extend<Entry> for Object {
+impl Extend<Entry> for JsonObject {
 	fn extend<I: IntoIterator<Item = Entry>>(&mut self, iter: I) {
 		for entry in iter {
 			self.push_entry_back(entry);
@@ -955,9 +987,9 @@ impl Extend<Entry> for Object {
 	}
 }
 
-impl FromIterator<Entry> for Object {
+impl FromIterator<Entry> for JsonObject {
 	fn from_iter<I: IntoIterator<Item = Entry>>(iter: I) -> Self {
-		let mut object = Object::default();
+		let mut object = JsonObject::default();
 		object.extend(iter);
 		object
 	}
@@ -965,7 +997,13 @@ impl FromIterator<Entry> for Object {
 
 /// Duplicate entry error.
 #[derive(Debug)]
-pub struct DuplicateEntry<T = Entry>(pub T, pub T);
+pub struct DuplicateEntry<T = Entry>(pub Box<T>, pub Box<T>);
+
+impl<T> DuplicateEntry<T> {
+	pub fn new(a: T, b: T) -> Self {
+		Self(Box::new(a), Box::new(b))
+	}
+}
 
 impl fmt::Display for DuplicateEntry {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -979,14 +1017,14 @@ impl std::error::Error for DuplicateEntry {}
 
 #[cfg(test)]
 mod tests {
-	use crate::lexical::BorrowLexical;
+	use crate::lexical::BorrowJsonLexical;
 
 	use super::*;
 
 	#[test]
 	fn remove() {
-		let mut object = Object::new();
-		object.insert("a", Value::Null);
+		let mut object = JsonObject::new();
+		object.insert("a", JsonValue::Null);
 
 		object.remove("a");
 		object.remove("a");
@@ -994,27 +1032,27 @@ mod tests {
 
 	#[test]
 	fn unordered_eq1() {
-		let mut a = Object::new();
-		a.push_back("a", Value::Null);
-		a.push_back("b", Value::Null);
+		let mut a = JsonObject::new();
+		a.push_back("a", JsonValue::Null);
+		a.push_back("b", JsonValue::Null);
 
-		let mut b = Object::new();
-		b.push_back("b", Value::Null);
-		b.push_back("a", Value::Null);
+		let mut b = JsonObject::new();
+		b.push_back("b", JsonValue::Null);
+		b.push_back("a", JsonValue::Null);
 
-		assert_ne!(a, b);
-		assert_eq!(a.as_lexical(), b.as_lexical())
+		assert_eq!(a, b);
+		assert_ne!(a.as_lexical(), b.as_lexical())
 	}
 
 	#[test]
 	fn unordered_eq2() {
-		let mut a = Object::new();
-		a.push_back("a", Value::Null);
-		a.push_back("a", Value::Null);
+		let mut a = JsonObject::new();
+		a.push_back("a", JsonValue::Null);
+		a.push_back("a", JsonValue::Null);
 
-		let mut b = Object::new();
-		b.push_back("a", Value::Null);
-		b.push_back("a", Value::Null);
+		let mut b = JsonObject::new();
+		b.push_back("a", JsonValue::Null);
+		b.push_back("a", JsonValue::Null);
 
 		assert_eq!(a, b);
 		assert_eq!(a.as_lexical(), b.as_lexical())
@@ -1022,39 +1060,39 @@ mod tests {
 
 	#[test]
 	fn insert_front1() {
-		let mut a = Object::new();
-		a.push_back("a", Value::Null);
-		a.push_back("b", Value::Null);
-		a.push_back("c", Value::Null);
-		a.shift_insert_front("b", Value::Null);
+		let mut a = JsonObject::new();
+		a.push_back("a", JsonValue::Null);
+		a.push_back("b", JsonValue::Null);
+		a.push_back("c", JsonValue::Null);
+		a.shift_insert_front("b", JsonValue::Null);
 
-		let mut b = Object::new();
-		b.push_back("b", Value::Null);
-		b.push_back("a", Value::Null);
-		b.push_back("c", Value::Null);
+		let mut b = JsonObject::new();
+		b.push_back("b", JsonValue::Null);
+		b.push_back("a", JsonValue::Null);
+		b.push_back("c", JsonValue::Null);
 
 		assert_eq!(a, b);
 	}
 
 	#[test]
 	fn insert_front2() {
-		let mut a = Object::new();
-		a.push_back("a", Value::Null);
-		a.push_back("a", Value::Null);
-		a.push_back("c", Value::Null);
-		a.shift_insert_front("a", Value::Null);
+		let mut a = JsonObject::new();
+		a.push_back("a", JsonValue::Null);
+		a.push_back("a", JsonValue::Null);
+		a.push_back("c", JsonValue::Null);
+		a.shift_insert_front("a", JsonValue::Null);
 
-		let mut b = Object::new();
-		b.push_back("a", Value::Null);
-		b.push_back("c", Value::Null);
+		let mut b = JsonObject::new();
+		b.push_back("a", JsonValue::Null);
+		b.push_back("c", JsonValue::Null);
 
 		assert_eq!(a, b);
 	}
 
 	#[test]
 	fn mapped_entries() {
-		use crate::Parse;
-		let (json, code_map) = crate::Value::parse_str(
+		use crate::ParseJson;
+		let (json, code_map) = crate::JsonValue::parse_str(
 			r#"{ "0": [null, null], "1": { "foo": 0, "bar": 1 }, "0": null }"#,
 		)
 		.unwrap();

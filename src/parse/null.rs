@@ -1,7 +1,7 @@
-use super::{Context, Error, Parse, Parser};
+use super::{Context, Error, ParseJson, Parser};
 use decoded_char::DecodedChar;
 
-impl Parse for () {
+impl ParseJson for () {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		_context: Context,

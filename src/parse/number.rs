@@ -1,9 +1,8 @@
-use super::{Context, Error, Parse, Parser};
-use crate::{NumberBuf, SMALL_STRING_CAPACITY};
+use super::{Context, Error, ParseJson, Parser};
+use crate::{number::DefaultBuffer, JsonNumberBuf};
 use decoded_char::DecodedChar;
-use smallvec::SmallVec;
 
-impl Parse for NumberBuf {
+impl ParseJson for JsonNumberBuf {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
 		context: Context,
@@ -12,7 +11,7 @@ impl Parse for NumberBuf {
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
 		let i = parser.begin_fragment();
-		let mut buffer: SmallVec<[u8; SMALL_STRING_CAPACITY]> = SmallVec::new();
+		let mut buffer = DefaultBuffer::new();
 
 		enum State {
 			Init,
@@ -110,7 +109,7 @@ impl Parse for NumberBuf {
 			State::Zero | State::NonZero | State::FractionalRest | State::ExponentRest
 		) {
 			parser.end_fragment(i);
-			Ok((unsafe { NumberBuf::new_unchecked(buffer) }, i))
+			Ok((unsafe { JsonNumberBuf::new_unchecked(buffer) }, i))
 		} else {
 			Err(Error::unexpected(parser.position, None))
 		}

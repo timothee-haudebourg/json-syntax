@@ -1,7 +1,10 @@
 use core::fmt;
 use std::fmt::Display;
 
-use crate::visitor::{JsonValue, JsonVisitor};
+use crate::{
+	visitor::{JsonVisitor, VisitJson},
+	JsonNumber,
+};
 
 use super::{sizes::Size, Options, Spaces};
 
@@ -46,7 +49,7 @@ impl<'a, 'f> JsonVisitor for Printer<'a, 'f> {
 		}
 	}
 
-	fn visit_number(self, value: &json_number::Number) -> Self::Output {
+	fn visit_number(self, value: &JsonNumber) -> Self::Output {
 		self.formatter.write_str(value.as_str())
 	}
 
@@ -54,10 +57,7 @@ impl<'a, 'f> JsonVisitor for Printer<'a, 'f> {
 		string_literal(value, self.formatter)
 	}
 
-	fn visit_array<I: IntoIterator<Item: crate::visitor::JsonValue>>(
-		self,
-		items: I,
-	) -> Self::Output {
+	fn visit_array<I: IntoIterator<Item: VisitJson>>(self, items: I) -> Self::Output {
 		let size = self.sizes[*self.offset];
 		*self.offset += 1;
 
@@ -132,7 +132,7 @@ impl<'a, 'f> JsonVisitor for Printer<'a, 'f> {
 		self.formatter.write_str("]")
 	}
 
-	fn visit_object<E: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: crate::visitor::JsonValue>(
+	fn visit_object<E: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: VisitJson>(
 		self,
 		entries: E,
 	) -> Self::Output {

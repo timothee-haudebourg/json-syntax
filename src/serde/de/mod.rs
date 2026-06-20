@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::{
 	de::{
 		DeserializeSeed, EnumAccess, Expected, IntoDeserializer, MapAccess, SeqAccess, Unexpected,
@@ -5,15 +7,18 @@ use serde::{
 	},
 	forward_to_deserialize_any, Deserialize,
 };
-use std::fmt;
 
 use crate::{
 	object::{Entry, Key},
 	serde::NUMBER_TOKEN,
-	Array, NumberBuf, Object, Value,
+	InvalidJsonNumber, JsonArrayBuf, JsonNumberBuf, JsonObject, JsonValue,
 };
 
-impl Value {
+mod number;
+
+pub use number::JsonNumberVisitor;
+
+impl JsonValue {
 	#[cold]
 	fn invalid_type<E>(&self, exp: &dyn Expected) -> E
 	where
@@ -23,7 +28,7 @@ impl Value {
 	}
 
 	#[cold]
-	fn unexpected(&self) -> Unexpected {
+	fn unexpected(&self) -> Unexpected<'_> {
 		match self {
 			Self::Null => Unexpected::Unit,
 			Self::Boolean(b) => Unexpected::Bool(*b),
@@ -41,7 +46,7 @@ impl Value {
 	}
 }
 
-impl<'de> Deserialize<'de> for Value {
+impl<'de> Deserialize<'de> for JsonValue {
 	#[inline]
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
@@ -50,52 +55,52 @@ impl<'de> Deserialize<'de> for Value {
 		struct ValueVisitor;
 
 		impl<'de> Visitor<'de> for ValueVisitor {
-			type Value = Value;
+			type Value = JsonValue;
 
 			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("any valid JSON value")
 			}
 
 			#[inline]
-			fn visit_bool<E>(self, value: bool) -> Result<Value, E> {
-				Ok(Value::Boolean(value))
+			fn visit_bool<E>(self, value: bool) -> Result<JsonValue, E> {
+				Ok(JsonValue::Boolean(value))
 			}
 
 			#[inline]
-			fn visit_i64<E>(self, value: i64) -> Result<Value, E> {
-				Ok(Value::Number(value.into()))
+			fn visit_i64<E>(self, value: i64) -> Result<JsonValue, E> {
+				Ok(JsonValue::Number(value.into()))
 			}
 
 			#[inline]
-			fn visit_u64<E>(self, value: u64) -> Result<Value, E> {
-				Ok(Value::Number(value.into()))
+			fn visit_u64<E>(self, value: u64) -> Result<JsonValue, E> {
+				Ok(JsonValue::Number(value.into()))
 			}
 
 			#[inline]
-			fn visit_f64<E>(self, value: f64) -> Result<Value, E> {
-				Ok(NumberBuf::try_from(value).map_or(Value::Null, Value::Number))
+			fn visit_f64<E>(self, value: f64) -> Result<JsonValue, E> {
+				Ok(JsonNumberBuf::try_from(value).map_or(JsonValue::Null, JsonValue::Number))
 			}
 
 			#[inline]
-			fn visit_str<E>(self, value: &str) -> Result<Value, E>
+			fn visit_str<E>(self, value: &str) -> Result<JsonValue, E>
 			where
 				E: serde::de::Error,
 			{
-				Ok(Value::String(value.into()))
+				Ok(JsonValue::String(value.into()))
 			}
 
 			#[inline]
-			fn visit_string<E>(self, value: String) -> Result<Value, E> {
-				Ok(Value::String(value.into()))
+			fn visit_string<E>(self, value: String) -> Result<JsonValue, E> {
+				Ok(JsonValue::String(value.into()))
 			}
 
 			#[inline]
-			fn visit_none<E>(self) -> Result<Value, E> {
-				Ok(Value::Null)
+			fn visit_none<E>(self) -> Result<JsonValue, E> {
+				Ok(JsonValue::Null)
 			}
 
 			#[inline]
-			fn visit_some<D>(self, deserializer: D) -> Result<Value, D::Error>
+			fn visit_some<D>(self, deserializer: D) -> Result<JsonValue, D::Error>
 			where
 				D: serde::Deserializer<'de>,
 			{
@@ -103,12 +108,12 @@ impl<'de> Deserialize<'de> for Value {
 			}
 
 			#[inline]
-			fn visit_unit<E>(self) -> Result<Value, E> {
-				Ok(Value::Null)
+			fn visit_unit<E>(self) -> Result<JsonValue, E> {
+				Ok(JsonValue::Null)
 			}
 
 			#[inline]
-			fn visit_seq<V>(self, mut visitor: V) -> Result<Value, V::Error>
+			fn visit_seq<V>(self, mut visitor: V) -> Result<JsonValue, V::Error>
 			where
 				V: SeqAccess<'de>,
 			{
@@ -118,14 +123,13 @@ impl<'de> Deserialize<'de> for Value {
 					vec.push(elem);
 				}
 
-				Ok(Value::Array(vec))
+				Ok(JsonValue::Array(vec))
 			}
 
-			fn visit_map<V>(self, mut visitor: V) -> Result<Value, V::Error>
+			fn visit_map<V>(self, mut visitor: V) -> Result<JsonValue, V::Error>
 			where
 				V: MapAccess<'de>,
 			{
-				eprintln!("visit map (value)");
 				enum MapTag {
 					Number,
 					None(Key),
@@ -175,25 +179,25 @@ impl<'de> Deserialize<'de> for Value {
 				match visitor.next_key()? {
 					Some(MapTag::Number) => {
 						let value: String = visitor.next_value()?;
-						NumberBuf::new(value.into_bytes().into())
-							.map(Value::Number)
-							.map_err(|json_number::InvalidNumber(bytes)| {
-								serde::de::Error::custom(json_number::InvalidNumber(
+						JsonNumberBuf::new(value.into_bytes().into())
+							.map(JsonValue::Number)
+							.map_err(|InvalidJsonNumber(bytes)| {
+								serde::de::Error::custom(InvalidJsonNumber(
 									String::from_utf8(bytes.into_vec()).unwrap(),
 								))
 							})
 					}
 					Some(MapTag::None(key)) => {
-						let mut object = Object::new();
+						let mut object = JsonObject::new();
 
 						object.insert(key, visitor.next_value()?);
-						while let Some((key, value)) = visitor.next_entry::<Key, Value>()? {
+						while let Some((key, value)) = visitor.next_entry::<Key, JsonValue>()? {
 							object.insert(key, value);
 						}
 
-						Ok(Value::Object(object))
+						Ok(JsonValue::Object(object))
 					}
-					None => Ok(Value::Object(Object::new())),
+					None => Ok(JsonValue::Object(JsonObject::new())),
 				}
 			}
 		}
@@ -202,7 +206,7 @@ impl<'de> Deserialize<'de> for Value {
 	}
 }
 
-impl<'de> IntoDeserializer<'de, DeserializeError> for Value {
+impl<'de> IntoDeserializer<'de, DeserializeError> for JsonValue {
 	type Deserializer = Self;
 
 	fn into_deserializer(self) -> Self::Deserializer {
@@ -210,7 +214,7 @@ impl<'de> IntoDeserializer<'de, DeserializeError> for Value {
 	}
 }
 
-impl<'de> Deserialize<'de> for Object {
+impl<'de> Deserialize<'de> for JsonObject {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: serde::Deserializer<'de>,
@@ -218,7 +222,7 @@ impl<'de> Deserialize<'de> for Object {
 		struct Visitor;
 
 		impl<'de> serde::de::Visitor<'de> for Visitor {
-			type Value = Object;
+			type Value = JsonObject;
 
 			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				write!(formatter, "a JSON object")
@@ -228,10 +232,9 @@ impl<'de> Deserialize<'de> for Object {
 			where
 				A: MapAccess<'de>,
 			{
-				eprintln!("visit map (object)");
-				let mut object = Object::new();
+				let mut object = JsonObject::new();
 
-				while let Some((key, value)) = map.next_entry::<Key, Value>()? {
+				while let Some((key, value)) = map.next_entry::<Key, JsonValue>()? {
 					object.insert(key, value);
 				}
 
@@ -243,11 +246,11 @@ impl<'de> Deserialize<'de> for Object {
 	}
 }
 
-impl<'de> IntoDeserializer<'de, DeserializeError> for Object {
-	type Deserializer = Value;
+impl<'de> IntoDeserializer<'de, DeserializeError> for JsonObject {
+	type Deserializer = JsonValue;
 
 	fn into_deserializer(self) -> Self::Deserializer {
-		Value::Object(self)
+		JsonValue::Object(self)
 	}
 }
 
@@ -266,8 +269,8 @@ impl fmt::Display for DeserializeError {
 	}
 }
 
-impl From<json_number::serde::Unexpected> for DeserializeError {
-	fn from(value: json_number::serde::Unexpected) -> Self {
+impl From<number::Unexpected> for DeserializeError {
+	fn from(value: number::Unexpected) -> Self {
 		Self::Custom(value.to_string())
 	}
 }
@@ -290,14 +293,14 @@ macro_rules! deserialize_number {
 			V: serde::de::Visitor<'de>,
 		{
 			match self {
-				Value::Number(n) => Ok(n.deserialize_any(visitor)?),
+				JsonValue::Number(n) => Ok(n.deserialize_any(visitor)?),
 				_ => Err(self.invalid_type(&visitor)),
 			}
 		}
 	};
 }
 
-impl<'de> serde::Deserializer<'de> for Value {
+impl<'de> serde::Deserializer<'de> for JsonValue {
 	type Error = DeserializeError;
 
 	#[inline]
@@ -334,7 +337,7 @@ impl<'de> serde::Deserializer<'de> for Value {
 		V: serde::de::Visitor<'de>,
 	{
 		match self {
-			Value::Null => visitor.visit_none(),
+			JsonValue::Null => visitor.visit_none(),
 			_ => visitor.visit_some(self),
 		}
 	}
@@ -350,7 +353,7 @@ impl<'de> serde::Deserializer<'de> for Value {
 		V: serde::de::Visitor<'de>,
 	{
 		let (variant, value) = match self {
-			Value::Object(value) => {
+			JsonValue::Object(value) => {
 				let mut iter = value.into_iter();
 				let (variant, value) = match iter.next() {
 					Some(v) => v,
@@ -370,7 +373,7 @@ impl<'de> serde::Deserializer<'de> for Value {
 				}
 				(variant, Some(value))
 			}
-			Value::String(variant) => (variant, None),
+			JsonValue::String(variant) => (variant, None),
 			other => {
 				return Err(serde::de::Error::invalid_type(
 					other.unexpected(),
@@ -399,7 +402,7 @@ impl<'de> serde::Deserializer<'de> for Value {
 		V: serde::de::Visitor<'de>,
 	{
 		match self {
-			Value::Boolean(v) => visitor.visit_bool(v),
+			JsonValue::Boolean(v) => visitor.visit_bool(v),
 			_ => Err(self.invalid_type(&visitor)),
 		}
 	}
@@ -423,7 +426,7 @@ impl<'de> serde::Deserializer<'de> for Value {
 		V: serde::de::Visitor<'de>,
 	{
 		match self {
-			Value::String(v) => visitor.visit_string(v.into_string()),
+			JsonValue::String(v) => visitor.visit_string(v.into_string()),
 			_ => Err(self.invalid_type(&visitor)),
 		}
 	}
@@ -440,8 +443,8 @@ impl<'de> serde::Deserializer<'de> for Value {
 		V: serde::de::Visitor<'de>,
 	{
 		match self {
-			Value::String(v) => visitor.visit_string(v.into_string()),
-			Value::Array(v) => visit_array(v, visitor),
+			JsonValue::String(v) => visitor.visit_string(v.into_string()),
+			JsonValue::Array(v) => visit_array(v, visitor),
 			_ => Err(self.invalid_type(&visitor)),
 		}
 	}
@@ -451,7 +454,7 @@ impl<'de> serde::Deserializer<'de> for Value {
 		V: serde::de::Visitor<'de>,
 	{
 		match self {
-			Value::Null => visitor.visit_unit(),
+			JsonValue::Null => visitor.visit_unit(),
 			_ => Err(self.invalid_type(&visitor)),
 		}
 	}
@@ -472,7 +475,7 @@ impl<'de> serde::Deserializer<'de> for Value {
 		V: serde::de::Visitor<'de>,
 	{
 		match self {
-			Value::Array(v) => visit_array(v, visitor),
+			JsonValue::Array(v) => visit_array(v, visitor),
 			_ => Err(self.invalid_type(&visitor)),
 		}
 	}
@@ -501,7 +504,7 @@ impl<'de> serde::Deserializer<'de> for Value {
 		V: serde::de::Visitor<'de>,
 	{
 		match self {
-			Value::Object(v) => visit_object(v, visitor),
+			JsonValue::Object(v) => visit_object(v, visitor),
 			_ => Err(self.invalid_type(&visitor)),
 		}
 	}
@@ -516,8 +519,8 @@ impl<'de> serde::Deserializer<'de> for Value {
 		V: serde::de::Visitor<'de>,
 	{
 		match self {
-			Value::Array(v) => visit_array(v, visitor),
-			Value::Object(v) => visit_object(v, visitor),
+			JsonValue::Array(v) => visit_array(v, visitor),
+			JsonValue::Object(v) => visit_object(v, visitor),
 			_ => Err(self.invalid_type(&visitor)),
 		}
 	}
@@ -538,7 +541,7 @@ impl<'de> serde::Deserializer<'de> for Value {
 	}
 }
 
-fn visit_array<'de, V>(a: Array, visitor: V) -> Result<V::Value, DeserializeError>
+fn visit_array<'de, V>(a: JsonArrayBuf, visitor: V) -> Result<V::Value, DeserializeError>
 where
 	V: serde::de::Visitor<'de>,
 {
@@ -556,7 +559,7 @@ where
 	}
 }
 
-fn visit_object<'de, V>(o: Object, visitor: V) -> Result<V::Value, DeserializeError>
+fn visit_object<'de, V>(o: JsonObject, visitor: V) -> Result<V::Value, DeserializeError>
 where
 	V: serde::de::Visitor<'de>,
 {
@@ -575,11 +578,11 @@ where
 }
 
 struct ArrayDeserializer {
-	iter: std::vec::IntoIter<Value>,
+	iter: std::vec::IntoIter<JsonValue>,
 }
 
 impl ArrayDeserializer {
-	fn new(array: Array) -> Self {
+	fn new(array: JsonArrayBuf) -> Self {
 		Self {
 			iter: array.into_iter(),
 		}
@@ -609,11 +612,11 @@ impl<'de> SeqAccess<'de> for ArrayDeserializer {
 
 struct ObjectDeserializer {
 	iter: std::vec::IntoIter<Entry>,
-	value: Option<Value>,
+	value: Option<JsonValue>,
 }
 
 impl ObjectDeserializer {
-	fn new(obj: Object) -> Self {
+	fn new(obj: JsonObject) -> Self {
 		Self {
 			iter: obj.into_iter(),
 			value: None,
@@ -738,7 +741,7 @@ impl<'de> serde::Deserializer<'de> for MapKeyDeserializer {
 
 struct EnumDeserializer {
 	variant: Key,
-	value: Option<Value>,
+	value: Option<JsonValue>,
 }
 
 impl<'de> EnumAccess<'de> for EnumDeserializer {
@@ -756,7 +759,7 @@ impl<'de> EnumAccess<'de> for EnumDeserializer {
 }
 
 struct VariantDeserializer {
-	value: Option<Value>,
+	value: Option<JsonValue>,
 }
 
 impl<'de> VariantAccess<'de> for VariantDeserializer {
@@ -787,7 +790,7 @@ impl<'de> VariantAccess<'de> for VariantDeserializer {
 		V: serde::de::Visitor<'de>,
 	{
 		match self.value {
-			Some(Value::Array(v)) => {
+			Some(JsonValue::Array(v)) => {
 				if v.is_empty() {
 					visitor.visit_unit()
 				} else {
@@ -814,7 +817,7 @@ impl<'de> VariantAccess<'de> for VariantDeserializer {
 		V: serde::de::Visitor<'de>,
 	{
 		match self.value {
-			Some(Value::Object(v)) => visit_object(v, visitor),
+			Some(JsonValue::Object(v)) => visit_object(v, visitor),
 			Some(other) => Err(serde::de::Error::invalid_type(
 				other.unexpected(),
 				&"struct variant",

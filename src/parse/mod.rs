@@ -57,7 +57,7 @@ impl Default for Options {
 	}
 }
 
-pub trait Parse: Sized {
+pub trait ParseJson: Sized {
 	fn parse_slice(content: &[u8]) -> Result<(Self, CodeMap), Error> {
 		Self::parse_utf8(utf8_decode::Decoder::new(content.iter().copied()))
 			.map_err(Error::io_into_utf8)

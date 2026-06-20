@@ -25,7 +25,7 @@ impl CodeMap {
 		self.0.get_mut(i)
 	}
 
-	pub fn iter(&self) -> Iter {
+	pub fn iter(&self) -> Iter<'_> {
 		self.0.iter().enumerate()
 	}
 }
@@ -126,12 +126,12 @@ impl<T: 'static + std::error::Error> std::error::Error for Mapped<T> {
 #[cfg(test)]
 mod tests {
 	use super::Entry;
-	use crate::{Parse, Value};
+	use crate::{JsonValue, ParseJson};
 	use locspan::Span;
 
 	#[test]
 	fn code_map_t1() {
-		let (value, code_map) = Value::parse_str(r#"{ "a": 0, "b": [1, 2] }"#).unwrap();
+		let (value, code_map) = JsonValue::parse_str(r#"{ "a": 0, "b": [1, 2] }"#).unwrap();
 		let expected = [
 			Entry::new(Span::new(0, 23), 9),  // { "a": 0, "b": [1, 2] }
 			Entry::new(Span::new(2, 8), 3),   // "a": 0
@@ -154,7 +154,7 @@ mod tests {
 	#[test]
 	fn code_map_t2() {
 		let (value, code_map) =
-			Value::parse_str(r#"{ "a": 0, "b": { "c": 1, "d": [2, 3] }, "e": [4, [5, 6]] }"#)
+			JsonValue::parse_str(r#"{ "a": 0, "b": { "c": 1, "d": [2, 3] }, "e": [4, [5, 6]] }"#)
 				.unwrap();
 		let expected = [
 			Entry::new(Span::new(0, 58), 22), // { "a": 0, "b": { "c": 1, "d": [2, 3] }, "e": [4, [5, 6]] }
