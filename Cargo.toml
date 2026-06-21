@@ -1,7 +1,7 @@
 [package]
 name = "json-syntax"
 version = "0.12.5"
-edition = "2021"
+edition = "2024"
 authors = ["Timothée Haudebourg <author@haudebourg.net>"]
 description = "Strict JSON parsing and mapping library"
 categories = ["parsing", "data-structures"]
@@ -10,7 +10,7 @@ repository = "https://github.com/timothee-haudebourg/json-syntax"
 documentation = "https://docs.rs/json-syntax"
 license = "MIT/Apache-2.0"
 readme = "README.md"
-rust-version = "1.71.0"
+rust-version = "1.85.0"
 
 [features]
 default = ["serde"]
@@ -28,16 +28,12 @@ serde_json = ["dep:serde_json"]
 all-features = true
 
 [dependencies]
-# json-number = { version = "0.4", features = ["smallnumberbuf"] }
-# json-number = { path = "/home/work/Documents/Community/JSON/number/" }
 smallvec = "1.9"
 smallstr = "0.3"
 locspan = "0.9"
 lexical = { version = "7.0.1", features = [ "format" ] }
-# indexmap = "1.9.1"
 decoded-char = "0.1"
-# hashbrown = { version = "0.12.1", features = ["raw"] }
-btree-indexmap.path = "/home/work/Documents/Community/Utils/data-structures/btree-indexmap/"
+btree-indexmap = "0.1"
 utf8-decode = "1.0.1"
 
 # Canonicalization.
