@@ -1,6 +1,6 @@
 use crate::{
-	visitor::{JsonVisitor, VisitJson},
 	JsonNumber,
+	visitor::{JsonVisitor, VisitJson},
 };
 
 use super::{Limit, Options};

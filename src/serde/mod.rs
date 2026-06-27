@@ -2,8 +2,8 @@ use core::fmt;
 
 use crate::{JsonValue, ParseJson};
 use serde::{
-	de::{DeserializeOwned, Error},
 	Serialize,
+	de::{DeserializeOwned, Error},
 };
 
 mod de;

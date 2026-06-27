@@ -3,25 +3,27 @@ use std::{borrow::Borrow, ops::Deref};
 
 use locspan::Span;
 
+pub type JsonLocation = usize;
+
 /// Code-map.
 #[derive(Debug, Default, Clone)]
-pub struct CodeMap(Vec<Entry>);
+pub struct JsonCodeMap(Vec<JsonCodeMapEntry>);
 
-impl CodeMap {
-	pub fn as_slice(&self) -> &[Entry] {
+impl JsonCodeMap {
+	pub fn as_slice(&self) -> &[JsonCodeMapEntry] {
 		&self.0
 	}
 
-	pub(crate) fn reserve(&mut self, position: usize) -> usize {
+	pub(crate) fn reserve(&mut self, position: JsonLocation) -> usize {
 		let i = self.0.len();
-		self.0.push(Entry {
+		self.0.push(JsonCodeMapEntry {
 			span: Span::new(position, position),
 			volume: 0,
 		});
 		i
 	}
 
-	pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut Entry> {
+	pub(crate) fn get_mut(&mut self, i: JsonLocation) -> Option<&mut JsonCodeMapEntry> {
 		self.0.get_mut(i)
 	}
 
@@ -30,42 +32,42 @@ impl CodeMap {
 	}
 }
 
-impl Deref for CodeMap {
-	type Target = [Entry];
+impl Deref for JsonCodeMap {
+	type Target = [JsonCodeMapEntry];
 
 	fn deref(&self) -> &Self::Target {
 		self.as_slice()
 	}
 }
 
-impl AsRef<[Entry]> for CodeMap {
-	fn as_ref(&self) -> &[Entry] {
+impl AsRef<[JsonCodeMapEntry]> for JsonCodeMap {
+	fn as_ref(&self) -> &[JsonCodeMapEntry] {
 		self.as_slice()
 	}
 }
 
-impl Borrow<[Entry]> for CodeMap {
-	fn borrow(&self) -> &[Entry] {
+impl Borrow<[JsonCodeMapEntry]> for JsonCodeMap {
+	fn borrow(&self) -> &[JsonCodeMapEntry] {
 		self.as_slice()
 	}
 }
 
-pub type Iter<'a> = std::iter::Enumerate<std::slice::Iter<'a, Entry>>;
+pub type Iter<'a> = std::iter::Enumerate<std::slice::Iter<'a, JsonCodeMapEntry>>;
 
-pub type IntoIter = std::iter::Enumerate<std::vec::IntoIter<Entry>>;
+pub type IntoIter = std::iter::Enumerate<std::vec::IntoIter<JsonCodeMapEntry>>;
 
-impl<'a> IntoIterator for &'a CodeMap {
+impl<'a> IntoIterator for &'a JsonCodeMap {
 	type IntoIter = Iter<'a>;
-	type Item = (usize, &'a Entry);
+	type Item = (usize, &'a JsonCodeMapEntry);
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.iter()
 	}
 }
 
-impl IntoIterator for CodeMap {
+impl IntoIterator for JsonCodeMap {
 	type IntoIter = IntoIter;
-	type Item = (usize, Entry);
+	type Item = (usize, JsonCodeMapEntry);
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.0.into_iter().enumerate()
@@ -76,7 +78,7 @@ impl IntoIterator for CodeMap {
 ///
 /// Provides code-mapping metadata about a fragment of JSON value.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Entry {
+pub struct JsonCodeMapEntry {
 	/// Byte span of the fragment in the original source code.
 	pub span: Span,
 
@@ -84,14 +86,14 @@ pub struct Entry {
 	pub volume: usize,
 }
 
-impl Entry {
+impl JsonCodeMapEntry {
 	pub fn new(span: Span, volume: usize) -> Self {
 		Self { span, volume }
 	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Mapped<T>(pub T, pub usize);
+pub struct Mapped<T>(pub T, pub JsonLocation);
 
 impl<T> Mapped<T> {
 	pub fn offset(&self) -> usize {
@@ -125,7 +127,7 @@ impl<T: 'static + std::error::Error> std::error::Error for Mapped<T> {
 
 #[cfg(test)]
 mod tests {
-	use super::Entry;
+	use super::JsonCodeMapEntry;
 	use crate::{JsonValue, ParseJson};
 	use locspan::Span;
 
@@ -133,15 +135,15 @@ mod tests {
 	fn code_map_t1() {
 		let (value, code_map) = JsonValue::parse_str(r#"{ "a": 0, "b": [1, 2] }"#).unwrap();
 		let expected = [
-			Entry::new(Span::new(0, 23), 9),  // { "a": 0, "b": [1, 2] }
-			Entry::new(Span::new(2, 8), 3),   // "a": 0
-			Entry::new(Span::new(2, 5), 1),   // "a"
-			Entry::new(Span::new(7, 8), 1),   // 0
-			Entry::new(Span::new(10, 21), 5), // "b": [1, 2]
-			Entry::new(Span::new(10, 13), 1), // "b"
-			Entry::new(Span::new(15, 21), 3), // [1, 2]
-			Entry::new(Span::new(16, 17), 1), // 1
-			Entry::new(Span::new(19, 20), 1), // 2
+			JsonCodeMapEntry::new(Span::new(0, 23), 9), // { "a": 0, "b": [1, 2] }
+			JsonCodeMapEntry::new(Span::new(2, 8), 3),  // "a": 0
+			JsonCodeMapEntry::new(Span::new(2, 5), 1),  // "a"
+			JsonCodeMapEntry::new(Span::new(7, 8), 1),  // 0
+			JsonCodeMapEntry::new(Span::new(10, 21), 5), // "b": [1, 2]
+			JsonCodeMapEntry::new(Span::new(10, 13), 1), // "b"
+			JsonCodeMapEntry::new(Span::new(15, 21), 3), // [1, 2]
+			JsonCodeMapEntry::new(Span::new(16, 17), 1), // 1
+			JsonCodeMapEntry::new(Span::new(19, 20), 1), // 2
 		];
 
 		assert_eq!(code_map.len(), expected.len());
@@ -157,28 +159,28 @@ mod tests {
 			JsonValue::parse_str(r#"{ "a": 0, "b": { "c": 1, "d": [2, 3] }, "e": [4, [5, 6]] }"#)
 				.unwrap();
 		let expected = [
-			Entry::new(Span::new(0, 58), 22), // { "a": 0, "b": { "c": 1, "d": [2, 3] }, "e": [4, [5, 6]] }
-			Entry::new(Span::new(2, 8), 3),   // "a": 0
-			Entry::new(Span::new(2, 5), 1),   // "a"
-			Entry::new(Span::new(7, 8), 1),   // 0
-			Entry::new(Span::new(10, 38), 11), // "b": { "c": 1, "d": [2, 3] }
-			Entry::new(Span::new(10, 13), 1), // "b"
-			Entry::new(Span::new(15, 38), 9), // { "c": 1, "d": [2, 3] }
-			Entry::new(Span::new(17, 23), 3), // "c": 1
-			Entry::new(Span::new(17, 20), 1), // "c"
-			Entry::new(Span::new(22, 23), 1), // 1
-			Entry::new(Span::new(25, 36), 5), // "d": [2, 3]
-			Entry::new(Span::new(25, 28), 1), // "d"
-			Entry::new(Span::new(30, 36), 3), // [2, 3]
-			Entry::new(Span::new(31, 32), 1), // 2
-			Entry::new(Span::new(34, 35), 1), // 3
-			Entry::new(Span::new(40, 56), 7), // "e": [4, [5, 6]]
-			Entry::new(Span::new(40, 43), 1), // "e"
-			Entry::new(Span::new(45, 56), 5), // [4, [5, 6]]
-			Entry::new(Span::new(46, 47), 1), // 4
-			Entry::new(Span::new(49, 55), 3), // [5, 6]
-			Entry::new(Span::new(50, 51), 1), // 5
-			Entry::new(Span::new(53, 54), 1), // 6
+			JsonCodeMapEntry::new(Span::new(0, 58), 22), // { "a": 0, "b": { "c": 1, "d": [2, 3] }, "e": [4, [5, 6]] }
+			JsonCodeMapEntry::new(Span::new(2, 8), 3),   // "a": 0
+			JsonCodeMapEntry::new(Span::new(2, 5), 1),   // "a"
+			JsonCodeMapEntry::new(Span::new(7, 8), 1),   // 0
+			JsonCodeMapEntry::new(Span::new(10, 38), 11), // "b": { "c": 1, "d": [2, 3] }
+			JsonCodeMapEntry::new(Span::new(10, 13), 1), // "b"
+			JsonCodeMapEntry::new(Span::new(15, 38), 9), // { "c": 1, "d": [2, 3] }
+			JsonCodeMapEntry::new(Span::new(17, 23), 3), // "c": 1
+			JsonCodeMapEntry::new(Span::new(17, 20), 1), // "c"
+			JsonCodeMapEntry::new(Span::new(22, 23), 1), // 1
+			JsonCodeMapEntry::new(Span::new(25, 36), 5), // "d": [2, 3]
+			JsonCodeMapEntry::new(Span::new(25, 28), 1), // "d"
+			JsonCodeMapEntry::new(Span::new(30, 36), 3), // [2, 3]
+			JsonCodeMapEntry::new(Span::new(31, 32), 1), // 2
+			JsonCodeMapEntry::new(Span::new(34, 35), 1), // 3
+			JsonCodeMapEntry::new(Span::new(40, 56), 7), // "e": [4, [5, 6]]
+			JsonCodeMapEntry::new(Span::new(40, 43), 1), // "e"
+			JsonCodeMapEntry::new(Span::new(45, 56), 5), // [4, [5, 6]]
+			JsonCodeMapEntry::new(Span::new(46, 47), 1), // 4
+			JsonCodeMapEntry::new(Span::new(49, 55), 3), // [5, 6]
+			JsonCodeMapEntry::new(Span::new(50, 51), 1), // 5
+			JsonCodeMapEntry::new(Span::new(53, 54), 1), // 6
 		];
 
 		assert_eq!(code_map.len(), expected.len());

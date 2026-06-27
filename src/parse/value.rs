@@ -1,5 +1,5 @@
-use super::{array, object, Context, Error, ParseJson, Parser};
-use crate::{object::Key, JsonArrayBuf, JsonNumberBuf, JsonObject, JsonString, JsonValue};
+use super::{Context, Error, ParseJson, Parser, array, object};
+use crate::{JsonArrayBuf, JsonNumberBuf, JsonObject, JsonString, JsonValue, object::Key};
 use decoded_char::DecodedChar;
 
 /// Value fragment.
@@ -70,7 +70,7 @@ impl ParseJson for Fragment {
 					(JsonValue::Object(JsonObject::new()), span)
 				}
 				(object::StartFragment::NonEmpty(key), span) => {
-					return Ok((Self::BeginObject(key), span))
+					return Ok((Self::BeginObject(key), span));
 				}
 			},
 			unexpected => return Err(Error::unexpected(parser.position, unexpected)),

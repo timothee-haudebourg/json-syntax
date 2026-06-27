@@ -1,5 +1,5 @@
 use super::{Context, Error, ParseJson, Parser};
-use crate::{number::DefaultBuffer, JsonNumberBuf};
+use crate::{JsonNumberBuf, number::DefaultBuffer};
 use decoded_char::DecodedChar;
 
 impl ParseJson for JsonNumberBuf {

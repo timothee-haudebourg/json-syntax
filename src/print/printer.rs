@@ -2,11 +2,11 @@ use core::fmt;
 use std::fmt::Display;
 
 use crate::{
-	visitor::{JsonVisitor, VisitJson},
 	JsonNumber,
+	visitor::{JsonVisitor, VisitJson},
 };
 
-use super::{sizes::Size, Options, Spaces};
+use super::{Options, Spaces, sizes::Size};
 
 pub struct Printer<'a, 'f> {
 	options: &'a Options,

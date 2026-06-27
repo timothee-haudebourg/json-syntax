@@ -1,4 +1,4 @@
-use json_syntax::{parse::Options, JsonValue, ParseJson};
+use json_syntax::{JsonValue, ParseJson, parse::Options};
 use std::fmt::Debug;
 use std::fs;
 use std::path::Path;

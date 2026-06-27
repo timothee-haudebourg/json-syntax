@@ -1,6 +1,6 @@
-use crate::code_map::Mapped;
+use crate::code_map::{JsonLocation, Mapped};
 use crate::lexical::{BorrowJsonLexical, JsonLexicalEq, JsonLexicalHash, JsonLexicalPartialEq};
-use crate::{CodeMap, JsonFragment, JsonValue};
+use crate::{JsonCodeMap, JsonFragment, JsonValue};
 use btree_indexmap::{BTreeIndexMultiMap, Comparable};
 use core::fmt;
 use core::hash::{Hash, Hasher};
@@ -138,7 +138,7 @@ impl JsonObject {
 		self.map.iter_mut()
 	}
 
-	pub fn iter_mapped<'m>(&self, code_map: &'m CodeMap, offset: usize) -> IterMapped<'_, 'm> {
+	pub fn iter_mapped<'m>(&self, code_map: &'m JsonCodeMap, offset: usize) -> IterMapped<'_, 'm> {
 		IterMapped {
 			entries: self.map.iter(),
 			code_map,
@@ -146,7 +146,11 @@ impl JsonObject {
 		}
 	}
 
-	pub fn into_iter_mapped<'m>(self, code_map: &'m CodeMap, offset: usize) -> IntoIterMapped<'m> {
+	pub fn into_iter_mapped<'m>(
+		self,
+		code_map: &'m JsonCodeMap,
+		offset: usize,
+	) -> IntoIterMapped<'m> {
 		IntoIterMapped {
 			entries: self.map.into_iter(),
 			code_map,
@@ -332,7 +336,7 @@ impl JsonObject {
 	/// compute the entry fragment offset.
 	pub fn get_mapped_entries<'m, Q>(
 		&self,
-		code_map: &'m CodeMap,
+		code_map: &'m JsonCodeMap,
 		offset: usize,
 		key: &Q,
 	) -> GetMappedEntries<'_, 'm>
@@ -354,7 +358,7 @@ impl JsonObject {
 	/// the entry fragment offset.
 	pub fn get_unique_mapped_entry<Q>(
 		&self,
-		code_map: &CodeMap,
+		code_map: &JsonCodeMap,
 		offset: usize,
 		key: &Q,
 	) -> Result<Option<MappedEntryRef<'_>>, DuplicateEntry<MappedEntryRef<'_>>>
@@ -379,7 +383,7 @@ impl JsonObject {
 	/// the entry fragment offset.
 	pub fn get_mapped_entries_with_index<'m, Q>(
 		&self,
-		code_map: &'m CodeMap,
+		code_map: &'m JsonCodeMap,
 		offset: usize,
 		key: &Q,
 	) -> GetIndexedMappedEntries<'_, 'm>
@@ -401,7 +405,7 @@ impl JsonObject {
 	/// the entry fragment offset.
 	pub fn get_unique_mapped_entry_with_index<Q>(
 		&self,
-		code_map: &CodeMap,
+		code_map: &JsonCodeMap,
 		offset: usize,
 		key: &Q,
 	) -> Result<Option<IndexedMappedEntry<'_>>, DuplicateEntry<IndexedMappedEntry<'_>>>
@@ -425,7 +429,7 @@ impl JsonObject {
 	/// the entry fragment offset.
 	pub fn get_mapped<'m, Q>(
 		&self,
-		code_map: &'m CodeMap,
+		code_map: &'m JsonCodeMap,
 		offset: usize,
 		key: &Q,
 	) -> GetMapped<'_, 'm>
@@ -447,7 +451,7 @@ impl JsonObject {
 	/// the entry fragment offset.
 	pub fn get_unique_mapped<Q>(
 		&self,
-		code_map: &CodeMap,
+		code_map: &JsonCodeMap,
 		offset: usize,
 		key: &Q,
 	) -> Result<Option<Mapped<&JsonValue>>, DuplicateEntry<Mapped<&JsonValue>>>
@@ -472,7 +476,7 @@ impl JsonObject {
 	/// the entry fragment offset.
 	pub fn get_indexed_mapped<'m, Q>(
 		&self,
-		code_map: &'m CodeMap,
+		code_map: &'m JsonCodeMap,
 		offset: usize,
 		key: &Q,
 	) -> GetIndexedMapped<'_, 'm>
@@ -494,7 +498,7 @@ impl JsonObject {
 	/// the entry fragment offset.
 	pub fn get_unique_mapped_with_index<Q>(
 		&self,
-		code_map: &CodeMap,
+		code_map: &JsonCodeMap,
 		offset: usize,
 		key: &Q,
 	) -> Result<Option<IndexedMappedValue<'_>>, DuplicateEntry<IndexedMappedValue<'_>>>
@@ -805,7 +809,7 @@ pub type SwapRemove<'a> = btree_indexmap::multi_map::SwapRemove<'a, Key, JsonVal
 
 pub struct IterMapped<'a, 'm> {
 	entries: Iter<'a>,
-	code_map: &'m CodeMap,
+	code_map: &'m JsonCodeMap,
 	offset: usize,
 }
 
@@ -823,8 +827,8 @@ impl<'a, 'm> Iterator for IterMapped<'a, 'm> {
 
 pub struct IntoIterMapped<'m> {
 	entries: IntoIter,
-	code_map: &'m CodeMap,
-	offset: usize,
+	code_map: &'m JsonCodeMap,
+	offset: JsonLocation,
 }
 
 impl<'m> Iterator for IntoIterMapped<'m> {
@@ -849,8 +853,8 @@ macro_rules! mapped_entries_iter {
 			pub struct $id<$lft, 'm> {
 				indexes: IndexesIter<$lft>,
 				object: &$lft JsonObject,
-				code_map: &'m CodeMap,
-				offset: usize,
+				code_map: &'m JsonCodeMap,
+				offset: JsonLocation,
 				last_index: usize
 			}
 
@@ -1007,7 +1011,7 @@ impl<T> DuplicateEntry<T> {
 
 impl fmt::Display for DuplicateEntry {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "duplicate entry `{}`", self.0 .0)
+		write!(f, "duplicate entry `{}`", self.0.0)
 	}
 }
 

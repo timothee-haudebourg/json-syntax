@@ -1,4 +1,4 @@
-use crate::{code_map::Mapped, CodeMap, JsonFragment, JsonValue};
+use crate::{JsonCodeMap, JsonFragment, JsonValue, code_map::Mapped};
 
 /// JSON array slice.
 pub type JsonArray = [JsonValue];
@@ -8,18 +8,18 @@ pub type JsonArrayBuf = Vec<JsonValue>;
 
 /// Trait for JSON array types like `Vec<Value>` and `[Value]`.
 pub trait JsonArrayExt {
-	fn iter_mapped<'m>(&self, code_map: &'m CodeMap, offset: usize) -> IterMapped<'_, 'm>;
+	fn iter_mapped<'m>(&self, code_map: &'m JsonCodeMap, offset: usize) -> IterMapped<'_, 'm>;
 
 	fn get_fragment(&self, index: usize) -> Result<JsonFragment<'_>, usize>;
 }
 
 /// Trait for owned JSON array types like `Vec<Value>`.
 pub trait JsonArrayBufExt: Sized + JsonArrayExt {
-	fn into_iter_mapped<'m>(self, code_map: &'m CodeMap, offset: usize) -> IntoIterMapped<'m>;
+	fn into_iter_mapped<'m>(self, code_map: &'m JsonCodeMap, offset: usize) -> IntoIterMapped<'m>;
 }
 
 impl JsonArrayExt for JsonArray {
-	fn iter_mapped<'m>(&self, code_map: &'m CodeMap, offset: usize) -> IterMapped<'_, 'm> {
+	fn iter_mapped<'m>(&self, code_map: &'m JsonCodeMap, offset: usize) -> IterMapped<'_, 'm> {
 		IterMapped {
 			items: self.iter(),
 			code_map,
@@ -40,7 +40,7 @@ impl JsonArrayExt for JsonArray {
 }
 
 impl JsonArrayExt for JsonArrayBuf {
-	fn iter_mapped<'m>(&self, code_map: &'m CodeMap, offset: usize) -> IterMapped<'_, 'm> {
+	fn iter_mapped<'m>(&self, code_map: &'m JsonCodeMap, offset: usize) -> IterMapped<'_, 'm> {
 		self.as_slice().iter_mapped(code_map, offset)
 	}
 
@@ -50,7 +50,7 @@ impl JsonArrayExt for JsonArrayBuf {
 }
 
 impl JsonArrayBufExt for JsonArrayBuf {
-	fn into_iter_mapped<'m>(self, code_map: &'m CodeMap, offset: usize) -> IntoIterMapped<'m> {
+	fn into_iter_mapped<'m>(self, code_map: &'m JsonCodeMap, offset: usize) -> IntoIterMapped<'m> {
 		IntoIterMapped {
 			items: self.into_iter(),
 			code_map,
@@ -61,7 +61,7 @@ impl JsonArrayBufExt for JsonArrayBuf {
 
 pub struct IterMapped<'a, 'm> {
 	items: std::slice::Iter<'a, JsonValue>,
-	code_map: &'m CodeMap,
+	code_map: &'m JsonCodeMap,
 	offset: usize,
 }
 
@@ -79,7 +79,7 @@ impl<'a, 'm> Iterator for IterMapped<'a, 'm> {
 
 pub struct IntoIterMapped<'m> {
 	items: std::vec::IntoIter<JsonValue>,
-	code_map: &'m CodeMap,
+	code_map: &'m JsonCodeMap,
 	offset: usize,
 }
 

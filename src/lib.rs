@@ -57,7 +57,7 @@ pub mod visitor;
 
 pub use array::{JsonArray, JsonArrayBuf};
 pub use bytes::JsonBytes;
-pub use code_map::CodeMap;
+pub use code_map::JsonCodeMap;
 pub use kind::{Kind, KindSet};
 use lexical::{BorrowJsonLexical, JsonLexicalEq, JsonLexicalPartialEq};
 pub use number::{InvalidJsonNumber, JsonNumber, JsonNumberBuf};
@@ -84,11 +84,11 @@ use crate::array::JsonArrayExt;
 /// ## Example
 ///
 /// ```
-/// use json_syntax::{JsonValue, ParseJson, CodeMap};
+/// use json_syntax::{JsonValue, ParseJson, JsonCodeMap};
 /// let (value, code_map) = JsonValue::parse_str("{ \"key\": \"value\" }").unwrap();
 /// ```
 ///
-/// The `code_map` value of type [`CodeMap`] contains code-mapping information
+/// The `code_map` value of type [`JsonCodeMap`] contains code-mapping information
 /// about all the fragments of the JSON value (their location in the source
 /// text).
 ///

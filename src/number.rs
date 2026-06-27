@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use smallvec::SmallVec;
 
-use crate::{lexical::BorrowJsonLexical, JsonBytes};
+use crate::{JsonBytes, lexical::BorrowJsonLexical};
 
 pub const DEFAULT_STACK_CAPACITY: usize = 8;
 
@@ -160,7 +160,7 @@ impl JsonNumber {
 	/// The `data` input **must** be a valid JSON number.
 	#[inline(always)]
 	pub unsafe fn new_unchecked<B: AsRef<[u8]> + ?Sized>(data: &B) -> &JsonNumber {
-		std::mem::transmute(data.as_ref())
+		unsafe { std::mem::transmute(data.as_ref()) }
 	}
 
 	#[inline(always)]
@@ -194,7 +194,7 @@ impl JsonNumber {
 		}
 
 		// Determine whether the exponent is zero (so it can be dropped).
-		let zero_exp = exp_pos.map_or(true, |e| {
+		let zero_exp = exp_pos.is_none_or(|e| {
 			let after_e = &data[e + 1..];
 			let digits = if after_e.first().is_some_and(|&b| b == b'+' || b == b'-') {
 				&after_e[1..]
@@ -257,7 +257,7 @@ impl JsonNumber {
 						Sign::Positive
 					} else {
 						Sign::Negative
-					}
+					};
 				}
 			}
 		}
@@ -398,11 +398,7 @@ impl JsonNumber {
 	pub fn as_f64_lossless(&self) -> Option<f64> {
 		let f = self.as_f64_lossy();
 		let n: JsonNumberBuf = f.try_into().unwrap();
-		if n.as_number() == self {
-			Some(f)
-		} else {
-			None
-		}
+		if n.as_number() == self { Some(f) } else { None }
 	}
 
 	pub fn to_custom_owned<B: JsonBytes>(&self) -> JsonNumberBuf<B> {

@@ -1,9 +1,9 @@
 use std::fmt;
 
-use serde::{ser::Impossible, Serialize};
+use serde::{Serialize, ser::Impossible};
 use smallstr::SmallString;
 
-use crate::{object::Key, JsonArrayBuf, JsonNumberBuf, JsonObject, JsonValue};
+use crate::{JsonArrayBuf, JsonNumberBuf, JsonObject, JsonValue, object::Key};
 
 use super::NUMBER_TOKEN;
 

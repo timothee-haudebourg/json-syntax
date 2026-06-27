@@ -1,4 +1,4 @@
-use json_syntax::{json, object::Key, JsonObject, JsonValue};
+use json_syntax::{JsonObject, JsonValue, json, object::Key};
 
 #[test]
 fn macro_01() {

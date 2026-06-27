@@ -10,7 +10,7 @@ mod object;
 mod string;
 mod value;
 
-use crate::CodeMap;
+use crate::JsonCodeMap;
 
 /// Parser options.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -58,53 +58,56 @@ impl Default for Options {
 }
 
 pub trait ParseJson: Sized {
-	fn parse_slice(content: &[u8]) -> Result<(Self, CodeMap), Error> {
+	fn parse_slice(content: &[u8]) -> Result<(Self, JsonCodeMap), Error> {
 		Self::parse_utf8(utf8_decode::Decoder::new(content.iter().copied()))
 			.map_err(Error::io_into_utf8)
 	}
 
-	fn parse_slice_with(content: &[u8], options: Options) -> Result<(Self, CodeMap), Error> {
+	fn parse_slice_with(content: &[u8], options: Options) -> Result<(Self, JsonCodeMap), Error> {
 		Self::parse_utf8_with(utf8_decode::Decoder::new(content.iter().copied()), options)
 			.map_err(Error::io_into_utf8)
 	}
 
-	fn parse_str(content: &str) -> Result<(Self, CodeMap), Error> {
+	fn parse_str(content: &str) -> Result<(Self, JsonCodeMap), Error> {
 		Self::parse_utf8(content.chars().map(Ok))
 	}
 
-	fn parse_str_with(content: &str, options: Options) -> Result<(Self, CodeMap), Error> {
+	fn parse_str_with(content: &str, options: Options) -> Result<(Self, JsonCodeMap), Error> {
 		Self::parse_utf8_with(content.chars().map(Ok), options)
 	}
 
-	fn parse_infallible_utf8<C>(chars: C) -> Result<(Self, CodeMap), Error>
+	fn parse_infallible_utf8<C>(chars: C) -> Result<(Self, JsonCodeMap), Error>
 	where
 		C: Iterator<Item = char>,
 	{
 		Self::parse_infallible(chars.map(DecodedChar::from_utf8))
 	}
 
-	fn parse_utf8_infallible_with<C>(chars: C, options: Options) -> Result<(Self, CodeMap), Error>
+	fn parse_utf8_infallible_with<C>(
+		chars: C,
+		options: Options,
+	) -> Result<(Self, JsonCodeMap), Error>
 	where
 		C: Iterator<Item = char>,
 	{
 		Self::parse_infallible_with(chars.map(DecodedChar::from_utf8), options)
 	}
 
-	fn parse_utf8<C, E>(chars: C) -> Result<(Self, CodeMap), Error<E>>
+	fn parse_utf8<C, E>(chars: C) -> Result<(Self, JsonCodeMap), Error<E>>
 	where
 		C: Iterator<Item = Result<char, E>>,
 	{
 		Self::parse(chars.map(|c| c.map(DecodedChar::from_utf8)))
 	}
 
-	fn parse_utf8_with<C, E>(chars: C, options: Options) -> Result<(Self, CodeMap), Error<E>>
+	fn parse_utf8_with<C, E>(chars: C, options: Options) -> Result<(Self, JsonCodeMap), Error<E>>
 	where
 		C: Iterator<Item = Result<char, E>>,
 	{
 		Self::parse_with(chars.map(|c| c.map(DecodedChar::from_utf8)), options)
 	}
 
-	fn parse_infallible<C>(chars: C) -> Result<(Self, CodeMap), Error>
+	fn parse_infallible<C>(chars: C) -> Result<(Self, JsonCodeMap), Error>
 	where
 		C: Iterator<Item = DecodedChar>,
 	{
@@ -113,7 +116,7 @@ pub trait ParseJson: Sized {
 		Ok((value, parser.code_map))
 	}
 
-	fn parse_infallible_with<C>(chars: C, options: Options) -> Result<(Self, CodeMap), Error>
+	fn parse_infallible_with<C>(chars: C, options: Options) -> Result<(Self, JsonCodeMap), Error>
 	where
 		C: Iterator<Item = DecodedChar>,
 	{
@@ -122,7 +125,7 @@ pub trait ParseJson: Sized {
 		Ok((value, parser.code_map))
 	}
 
-	fn parse<C, E>(chars: C) -> Result<(Self, CodeMap), Error<E>>
+	fn parse<C, E>(chars: C) -> Result<(Self, JsonCodeMap), Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -131,7 +134,7 @@ pub trait ParseJson: Sized {
 		Ok((value, parser.code_map))
 	}
 
-	fn parse_with<C, E>(chars: C, options: Options) -> Result<(Self, CodeMap), Error<E>>
+	fn parse_with<C, E>(chars: C, options: Options) -> Result<(Self, JsonCodeMap), Error<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -163,7 +166,7 @@ pub struct Parser<C: Iterator<Item = Result<DecodedChar, E>>, E> {
 	options: Options,
 
 	/// Code-map.
-	code_map: CodeMap,
+	code_map: JsonCodeMap,
 }
 
 /// Checks if the given char `c` is a JSON whitespace.
@@ -179,7 +182,7 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Parser<C, E> {
 			pending: None,
 			position: 0,
 			options: Options::default(),
-			code_map: CodeMap::default(),
+			code_map: JsonCodeMap::default(),
 		}
 	}
 
@@ -189,7 +192,7 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Parser<C, E> {
 			pending: None,
 			position: 0,
 			options,
-			code_map: CodeMap::default(),
+			code_map: JsonCodeMap::default(),
 		}
 	}
 

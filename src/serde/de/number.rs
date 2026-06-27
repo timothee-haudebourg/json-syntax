@@ -1,4 +1,4 @@
-use crate::{serde::NUMBER_TOKEN, InvalidJsonNumber, JsonBytes, JsonNumber, JsonNumberBuf};
+use crate::{InvalidJsonNumber, JsonBytes, JsonNumber, JsonNumberBuf, serde::NUMBER_TOKEN};
 use de::{Deserialize, Deserializer};
 use serde::{
 	de::{self, value::StrDeserializer},

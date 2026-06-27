@@ -1,17 +1,18 @@
 use std::fmt;
 
 use serde::{
+	Deserialize,
 	de::{
 		DeserializeSeed, EnumAccess, Expected, IntoDeserializer, MapAccess, SeqAccess, Unexpected,
 		VariantAccess, Visitor,
 	},
-	forward_to_deserialize_any, Deserialize,
+	forward_to_deserialize_any,
 };
 
 use crate::{
+	InvalidJsonNumber, JsonArrayBuf, JsonNumberBuf, JsonObject, JsonValue,
 	object::{Entry, Key},
 	serde::NUMBER_TOKEN,
-	InvalidJsonNumber, JsonArrayBuf, JsonNumberBuf, JsonObject, JsonValue,
 };
 
 mod number;

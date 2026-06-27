@@ -1,4 +1,4 @@
-use crate::{serde::NUMBER_TOKEN, JsonBytes, JsonNumber, JsonNumberBuf};
+use crate::{JsonBytes, JsonNumber, JsonNumberBuf, serde::NUMBER_TOKEN};
 use ser::{Serialize, Serializer};
 use serde::ser;
 
