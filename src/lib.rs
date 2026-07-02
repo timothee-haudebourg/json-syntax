@@ -38,6 +38,8 @@
 use smallvec::SmallVec;
 use std::{fmt, str::FromStr};
 
+pub use locspan;
+
 #[cfg(feature = "canonicalize")]
 pub use ryu_js;
 
@@ -53,6 +55,7 @@ pub mod object;
 pub mod parse;
 pub mod print;
 pub mod string;
+pub mod tracing;
 pub mod visitor;
 
 pub use array::{JsonArray, JsonArrayBuf};
@@ -72,7 +75,11 @@ pub mod serde;
 #[cfg(feature = "serde")]
 pub use serde::{from_slice, from_str, from_value, to_value};
 
-use crate::array::JsonArrayExt;
+use crate::{
+	array::JsonArrayExt,
+	code_map::JsonMapped,
+	tracing::{JsonFragmentPath, JsonFragmentPathSegment, ObjectEntryPart},
+};
 
 /// JSON Value.
 ///
@@ -359,6 +366,94 @@ impl JsonValue {
 		match self {
 			Self::Object(o) => Some(o),
 			_ => None,
+		}
+	}
+
+	/// Returns the [`JsonCodeMap`] index of the fragment described by `path`.
+	///
+	/// The returned index can be used to look up the byte span of the fragment
+	/// in the `code_map` produced by parsing the same document.
+	///
+	/// Returns `None` if the path does not exist in this value (e.g., the key
+	/// is missing, the array index is out of range, or a path segment tries to
+	/// navigate into a fragment that has no sub-fragments).
+	///
+	/// # Segment semantics
+	///
+	/// - [`JsonFragmentPathSegment::ArrayIndex`]: navigates into the *i*-th
+	///   element of an array.
+	/// - [`JsonFragmentPathSegment::ObjectKey`]: navigates to the **key** string
+	///   fragment of the *n*-th occurrence of the named key.  This is a terminal
+	///   step; further path segments after this will return `None`.
+	/// - [`JsonFragmentPathSegment::ObjectValue`]: navigates to the **value**
+	///   of the *n*-th occurrence of the named key.
+	pub fn locate_fragment(
+		&self,
+		code_map: &JsonCodeMap,
+		path: &JsonFragmentPath,
+	) -> Option<usize> {
+		self.locate_fragment_at(code_map, path, 0)
+	}
+
+	fn locate_fragment_at(
+		&self,
+		code_map: &JsonCodeMap,
+		path: &JsonFragmentPath,
+		offset: usize,
+	) -> Option<usize> {
+		match path.split_first() {
+			Some((segment, rest)) => match segment {
+				JsonFragmentPathSegment::ArrayItem(i) => {
+					let array = self.as_array()?;
+					for (j, JsonMapped(item, item_offset)) in
+						array.iter_mapped(code_map, offset).enumerate()
+					{
+						if j == *i {
+							return item.locate_fragment_at(code_map, rest, item_offset);
+						}
+					}
+
+					None
+				}
+				JsonFragmentPathSegment::ObjectEntry(k, occurrence, part) => {
+					let object = self.as_object()?;
+					let mut occ_count = 0usize;
+					for JsonMapped(
+						(JsonMapped(key, key_offset), JsonMapped(value, value_offset)),
+						entry_offset,
+					) in object.iter_mapped(code_map, offset)
+					{
+						if k.as_str() == key.as_str() {
+							if occ_count == *occurrence {
+								return match *part {
+									ObjectEntryPart::All => {
+										if rest.is_empty() {
+											Some(entry_offset)
+										} else {
+											None
+										}
+									}
+									ObjectEntryPart::Key => {
+										if rest.is_empty() {
+											Some(key_offset)
+										} else {
+											None
+										}
+									}
+									ObjectEntryPart::Value => {
+										value.locate_fragment_at(code_map, rest, value_offset)
+									}
+								};
+							}
+
+							occ_count += 1;
+						}
+					}
+
+					None
+				}
+			},
+			None => Some(offset),
 		}
 	}
 
@@ -682,6 +777,267 @@ impl<'a> Iterator for Traverse<'a> {
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn locate_01() {
+		use super::{JsonValue, ParseJson};
+		use crate::tracing::{JsonFragmentPathSegment, ObjectEntryPart};
+
+		// { "a": 0, "b": [1, 2] }
+		// index 0: object          (volume 9)
+		// index 1: entry "a": 0   (volume 3)
+		// index 2: key "a"         (volume 1)
+		// index 3: value 0         (volume 1)
+		// index 4: entry "b": [...](volume 5)
+		// index 5: key "b"         (volume 1)
+		// index 6: array [1, 2]    (volume 3)
+		// index 7: value 1         (volume 1)
+		// index 8: value 2         (volume 1)
+		let (value, code_map) = JsonValue::parse_str(r#"{ "a": 0, "b": [1, 2] }"#).unwrap();
+
+		// empty path → root (the object itself)
+		assert_eq!(value.locate_fragment(&code_map, &[]), Some(0));
+
+		// entry fragments (All)
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[JsonFragmentPathSegment::ObjectEntry(
+					"a".into(),
+					0,
+					ObjectEntryPart::All
+				)]
+			),
+			Some(1)
+		);
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[JsonFragmentPathSegment::ObjectEntry(
+					"b".into(),
+					0,
+					ObjectEntryPart::All
+				)]
+			),
+			Some(4)
+		);
+
+		// key fragments
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[JsonFragmentPathSegment::ObjectEntry(
+					"a".into(),
+					0,
+					ObjectEntryPart::Key
+				)]
+			),
+			Some(2)
+		);
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[JsonFragmentPathSegment::ObjectEntry(
+					"b".into(),
+					0,
+					ObjectEntryPart::Key
+				)]
+			),
+			Some(5)
+		);
+
+		// value fragments
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[JsonFragmentPathSegment::ObjectEntry(
+					"a".into(),
+					0,
+					ObjectEntryPart::Value
+				)]
+			),
+			Some(3)
+		);
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[JsonFragmentPathSegment::ObjectEntry(
+					"b".into(),
+					0,
+					ObjectEntryPart::Value
+				)]
+			),
+			Some(6)
+		);
+
+		// array elements inside "b"
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[
+					JsonFragmentPathSegment::ObjectEntry("b".into(), 0, ObjectEntryPart::Value),
+					JsonFragmentPathSegment::ArrayItem(0),
+				]
+			),
+			Some(7)
+		);
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[
+					JsonFragmentPathSegment::ObjectEntry("b".into(), 0, ObjectEntryPart::Value),
+					JsonFragmentPathSegment::ArrayItem(1),
+				]
+			),
+			Some(8)
+		);
+
+		// missing key
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[JsonFragmentPathSegment::ObjectEntry(
+					"z".into(),
+					0,
+					ObjectEntryPart::Value
+				)]
+			),
+			None
+		);
+
+		// array index out of bounds
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[
+					JsonFragmentPathSegment::ObjectEntry("b".into(), 0, ObjectEntryPart::Value),
+					JsonFragmentPathSegment::ArrayItem(2),
+				]
+			),
+			None
+		);
+
+		// All and Key are terminal – further segments after them return None
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[
+					JsonFragmentPathSegment::ObjectEntry("b".into(), 0, ObjectEntryPart::All),
+					JsonFragmentPathSegment::ArrayItem(0),
+				]
+			),
+			None
+		);
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[
+					JsonFragmentPathSegment::ObjectEntry("b".into(), 0, ObjectEntryPart::Key),
+					JsonFragmentPathSegment::ArrayItem(0),
+				]
+			),
+			None
+		);
+	}
+
+	#[test]
+	fn locate_duplicate_keys() {
+		use super::{JsonValue, ParseJson};
+		use crate::tracing::{JsonFragmentPathSegment, ObjectEntryPart};
+
+		// { "a": 1, "a": 2 }
+		// index 0: object                        (volume 7)
+		// index 1: entry "a": 1, occurrence 0   (volume 3)
+		// index 2: key "a",   occurrence 0       (volume 1)
+		// index 3: value 1,   occurrence 0       (volume 1)
+		// index 4: entry "a": 2, occurrence 1   (volume 3)
+		// index 5: key "a",   occurrence 1       (volume 1)
+		// index 6: value 2,   occurrence 1       (volume 1)
+		let (value, code_map) = JsonValue::parse_str(r#"{ "a": 1, "a": 2 }"#).unwrap();
+
+		// first occurrence
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[JsonFragmentPathSegment::ObjectEntry(
+					"a".into(),
+					0,
+					ObjectEntryPart::All
+				)]
+			),
+			Some(1)
+		);
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[JsonFragmentPathSegment::ObjectEntry(
+					"a".into(),
+					0,
+					ObjectEntryPart::Key
+				)]
+			),
+			Some(2)
+		);
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[JsonFragmentPathSegment::ObjectEntry(
+					"a".into(),
+					0,
+					ObjectEntryPart::Value
+				)]
+			),
+			Some(3)
+		);
+
+		// second occurrence
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[JsonFragmentPathSegment::ObjectEntry(
+					"a".into(),
+					1,
+					ObjectEntryPart::All
+				)]
+			),
+			Some(4)
+		);
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[JsonFragmentPathSegment::ObjectEntry(
+					"a".into(),
+					1,
+					ObjectEntryPart::Key
+				)]
+			),
+			Some(5)
+		);
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[JsonFragmentPathSegment::ObjectEntry(
+					"a".into(),
+					1,
+					ObjectEntryPart::Value
+				)]
+			),
+			Some(6)
+		);
+
+		// non-existent third occurrence
+		assert_eq!(
+			value.locate_fragment(
+				&code_map,
+				&[JsonFragmentPathSegment::ObjectEntry(
+					"a".into(),
+					2,
+					ObjectEntryPart::Value
+				)]
+			),
+			None
+		);
+	}
+
 	#[cfg(feature = "canonicalize")]
 	#[test]
 	fn canonicalize_01() {

@@ -1,7 +1,5 @@
 [package]
 name = "json-syntax"
-version = "0.12.5"
-edition = "2024"
 authors = ["Timothée Haudebourg <author@haudebourg.net>"]
 description = "Strict JSON parsing and mapping library"
 categories = ["parsing", "data-structures"]
@@ -10,7 +8,9 @@ repository = "https://github.com/timothee-haudebourg/json-syntax"
 documentation = "https://docs.rs/json-syntax"
 license = "MIT/Apache-2.0"
 readme = "README.md"
-rust-version = "1.85.0"
+rust-version = "1.96.0"
+edition = "2024"
+version = "0.12.5"
 
 [features]
 default = ["serde"]
@@ -24,17 +24,21 @@ serde = ["dep:serde", "smallstr/serde"]
 ## Compatibility layer with the `serde_json` crate.
 serde_json = ["dep:serde_json"]
 
+# Enables the `locspan/miette` feature.
+miette = ["locspan/miette"]
+
 [package.metadata.docs.rs]
 all-features = true
 
 [dependencies]
 smallvec = "1.9"
 smallstr = "0.3"
-locspan = "0.9"
+locspan.path = "/home/work/Documents/Community/Utils/parsing/locspan"
 lexical = { version = "7.0.1", features = [ "format" ] }
 decoded-char = "0.1"
-btree-indexmap = "0.1"
+btree-indexmap = "1.4"
 utf8-decode = "1.0.1"
+into-owned-trait = "1.0"
 
 # Canonicalization.
 ryu-js = { version = "0.2.2", optional = true }
