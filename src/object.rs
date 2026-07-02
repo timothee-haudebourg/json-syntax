@@ -1,4 +1,4 @@
-use crate::code_map::{JsonLocation, Mapped};
+use crate::code_map::{JsonCodeMapOffset, JsonMapped};
 use crate::lexical::{BorrowJsonLexical, JsonLexicalEq, JsonLexicalHash, JsonLexicalPartialEq};
 use crate::{JsonCodeMap, JsonFragment, JsonValue};
 use btree_indexmap::{BTreeIndexMultiMap, Comparable};
@@ -35,7 +35,7 @@ fn get_entry_fragment<'a>(entry: &'a Entry, index: usize) -> Result<JsonFragment
 }
 
 /// Object entry, with code map information.
-pub type MappedEntry = Mapped<(Mapped<Key>, Mapped<JsonValue>)>;
+pub type MappedEntry = JsonMapped<(JsonMapped<Key>, JsonMapped<JsonValue>)>;
 
 fn mapped_entry(
 	(key, value): Entry,
@@ -43,14 +43,14 @@ fn mapped_entry(
 	key_offset: usize,
 	value_offset: usize,
 ) -> MappedEntry {
-	Mapped(
-		(Mapped(key, key_offset), Mapped(value, value_offset)),
+	JsonMapped(
+		(JsonMapped(key, key_offset), JsonMapped(value, value_offset)),
 		offset,
 	)
 }
 
 /// Object entry reference, with code map information.
-pub type MappedEntryRef<'a> = Mapped<(Mapped<&'a Key>, Mapped<&'a JsonValue>)>;
+pub type MappedEntryRef<'a> = JsonMapped<(JsonMapped<&'a Key>, JsonMapped<&'a JsonValue>)>;
 
 fn mapped_entry_ref(
 	(key, value): EntryRef,
@@ -58,15 +58,15 @@ fn mapped_entry_ref(
 	key_offset: usize,
 	value_offset: usize,
 ) -> MappedEntryRef {
-	Mapped(
-		(Mapped(key, key_offset), Mapped(value, value_offset)),
+	JsonMapped(
+		(JsonMapped(key, key_offset), JsonMapped(value, value_offset)),
 		offset,
 	)
 }
 
 pub type IndexedMappedEntry<'a> = (usize, MappedEntryRef<'a>);
 
-pub type IndexedMappedValue<'a> = (usize, Mapped<&'a JsonValue>);
+pub type IndexedMappedValue<'a> = (usize, JsonMapped<&'a JsonValue>);
 
 /// JSON object.
 ///
@@ -79,7 +79,7 @@ pub type IndexedMappedValue<'a> = (usize, Mapped<&'a JsonValue>);
 /// objects (where the entries indexes matter) by using the
 /// [`BorrowJsonLexical::as_lexical`] method on both ends and comparing the
 /// results.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct JsonObject {
 	map: BTreeIndexMultiMap<Key, JsonValue>,
 }
@@ -454,7 +454,7 @@ impl JsonObject {
 		code_map: &JsonCodeMap,
 		offset: usize,
 		key: &Q,
-	) -> Result<Option<Mapped<&JsonValue>>, DuplicateEntry<Mapped<&JsonValue>>>
+	) -> Result<Option<JsonMapped<&JsonValue>>, DuplicateEntry<JsonMapped<&JsonValue>>>
 	where
 		Q: ?Sized + Comparable<Key>,
 	{
@@ -828,7 +828,7 @@ impl<'a, 'm> Iterator for IterMapped<'a, 'm> {
 pub struct IntoIterMapped<'m> {
 	entries: IntoIter,
 	code_map: &'m JsonCodeMap,
-	offset: JsonLocation,
+	offset: JsonCodeMapOffset,
 }
 
 impl<'m> Iterator for IntoIterMapped<'m> {
@@ -854,7 +854,7 @@ macro_rules! mapped_entries_iter {
 				indexes: IndexesIter<$lft>,
 				object: &$lft JsonObject,
 				code_map: &'m JsonCodeMap,
-				offset: JsonLocation,
+				offset: JsonCodeMapOffset,
 				last_index: usize
 			}
 
@@ -897,10 +897,10 @@ mapped_entries_iter! {
 	}
 
 	GetMapped<'a> {
-		type Item = Mapped<&'a JsonValue>;
+		type Item = JsonMapped<&'a JsonValue>;
 
 		fn next(&mut self, index) {
-			Mapped(
+			JsonMapped(
 				&self.object.entries()[index].1,
 				self.offset+2,
 			)
@@ -908,12 +908,12 @@ mapped_entries_iter! {
 	}
 
 	GetIndexedMapped<'a> {
-		type Item = (usize, Mapped<&'a JsonValue>);
+		type Item = (usize, JsonMapped<&'a JsonValue>);
 
 		fn next(&mut self, index) {
 			(
 				index,
-				Mapped(
+				JsonMapped(
 					&self.object.entries()[index].1,
 					self.offset+2
 				)
@@ -931,12 +931,6 @@ impl JsonLexicalPartialEq for JsonObject {
 }
 
 impl JsonLexicalEq for JsonObject {}
-
-impl Hash for JsonObject {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.map.hash(state);
-	}
-}
 
 impl JsonLexicalHash for JsonObject {
 	fn lexical_hash<H: Hasher>(&self, state: &mut H) {
@@ -1104,21 +1098,21 @@ mod tests {
 
 		let offsets: Vec<_> = object
 			.get_mapped_entries(&code_map, 0, "0")
-			.map(|Mapped((key, value), offset)| (offset, key.offset(), value.offset()))
+			.map(|JsonMapped((key, value), offset)| (offset, key.offset(), value.offset()))
 			.collect();
 
 		assert_eq!(offsets, [(1, 2, 3), (15, 16, 17)]);
 
 		let offsets: Vec<_> = object
 			.get_mapped_entries(&code_map, 0, "1")
-			.map(|Mapped((key, value), offset)| (offset, key.offset(), value.offset()))
+			.map(|JsonMapped((key, value), offset)| (offset, key.offset(), value.offset()))
 			.collect();
 
 		assert_eq!(offsets, [(6, 7, 8)]);
 
 		let offsets: Vec<_> = object
 			.iter_mapped(&code_map, 0)
-			.map(|Mapped((key, value), offset)| (offset, key.offset(), value.offset()))
+			.map(|JsonMapped((key, value), offset)| (offset, key.offset(), value.offset()))
 			.collect();
 
 		assert_eq!(offsets, [(1, 2, 3), (6, 7, 8), (15, 16, 17)]);

@@ -3,10 +3,10 @@ use std::{borrow::Borrow, ops::Deref};
 
 use locspan::Span;
 
-pub type JsonLocation = usize;
+pub type JsonCodeMapOffset = usize;
 
 /// Code-map.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct JsonCodeMap(Vec<JsonCodeMapEntry>);
 
 impl JsonCodeMap {
@@ -14,17 +14,19 @@ impl JsonCodeMap {
 		&self.0
 	}
 
-	pub(crate) fn reserve(&mut self, position: JsonLocation) -> usize {
+	pub(crate) fn reserve(&mut self, position: JsonCodeMapOffset) -> usize {
 		let i = self.0.len();
+
 		self.0.push(JsonCodeMapEntry {
 			span: Span::new(position, position),
 			volume: 0,
 		});
+
 		i
 	}
 
-	pub(crate) fn get_mut(&mut self, i: JsonLocation) -> Option<&mut JsonCodeMapEntry> {
-		self.0.get_mut(i)
+	pub(crate) fn get_mut(&mut self, offset: JsonCodeMapOffset) -> Option<&mut JsonCodeMapEntry> {
+		self.0.get_mut(offset)
 	}
 
 	pub fn iter(&self) -> Iter<'_> {
@@ -58,7 +60,7 @@ pub type IntoIter = std::iter::Enumerate<std::vec::IntoIter<JsonCodeMapEntry>>;
 
 impl<'a> IntoIterator for &'a JsonCodeMap {
 	type IntoIter = Iter<'a>;
-	type Item = (usize, &'a JsonCodeMapEntry);
+	type Item = (JsonCodeMapOffset, &'a JsonCodeMapEntry);
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.iter()
@@ -67,7 +69,7 @@ impl<'a> IntoIterator for &'a JsonCodeMap {
 
 impl IntoIterator for JsonCodeMap {
 	type IntoIter = IntoIter;
-	type Item = (usize, JsonCodeMapEntry);
+	type Item = (JsonCodeMapOffset, JsonCodeMapEntry);
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.0.into_iter().enumerate()
@@ -93,14 +95,14 @@ impl JsonCodeMapEntry {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Mapped<T>(pub T, pub JsonLocation);
+pub struct JsonMapped<T>(pub T, pub JsonCodeMapOffset);
 
-impl<T> Mapped<T> {
-	pub fn offset(&self) -> usize {
+impl<T> JsonMapped<T> {
+	pub fn offset(&self) -> JsonCodeMapOffset {
 		self.1
 	}
 
-	pub fn into_offset(self) -> usize {
+	pub fn into_offset(self) -> JsonCodeMapOffset {
 		self.1
 	}
 
@@ -113,13 +115,13 @@ impl<T> Mapped<T> {
 	}
 }
 
-impl<T: fmt::Display> fmt::Display for Mapped<T> {
+impl<T: fmt::Display> fmt::Display for JsonMapped<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		self.0.fmt(f)
 	}
 }
 
-impl<T: 'static + std::error::Error> std::error::Error for Mapped<T> {
+impl<T: 'static + std::error::Error> std::error::Error for JsonMapped<T> {
 	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
 		Some(&self.0)
 	}

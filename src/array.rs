@@ -1,4 +1,4 @@
-use crate::{JsonCodeMap, JsonFragment, JsonValue, code_map::Mapped};
+use crate::{JsonCodeMap, JsonFragment, JsonValue, code_map::JsonMapped};
 
 /// JSON array slice.
 pub type JsonArray = [JsonValue];
@@ -66,13 +66,13 @@ pub struct IterMapped<'a, 'm> {
 }
 
 impl<'a, 'm> Iterator for IterMapped<'a, 'm> {
-	type Item = Mapped<&'a JsonValue>;
+	type Item = JsonMapped<&'a JsonValue>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		self.items.next().map(|item| {
 			let offset = self.offset;
 			self.offset += self.code_map.get(self.offset).unwrap().volume;
-			Mapped(item, offset)
+			JsonMapped(item, offset)
 		})
 	}
 }
@@ -84,13 +84,13 @@ pub struct IntoIterMapped<'m> {
 }
 
 impl<'m> Iterator for IntoIterMapped<'m> {
-	type Item = Mapped<JsonValue>;
+	type Item = JsonMapped<JsonValue>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		self.items.next().map(|item| {
 			let offset = self.offset;
 			self.offset += self.code_map.get(self.offset).unwrap().volume;
-			Mapped(item, offset)
+			JsonMapped(item, offset)
 		})
 	}
 }
