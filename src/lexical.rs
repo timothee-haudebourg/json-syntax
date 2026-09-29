@@ -8,7 +8,7 @@ use crate::JsonValue;
 #[repr(transparent)]
 pub struct JsonLexical<T: ?Sized = JsonValue>(pub T);
 
-pub trait BorrowJsonLexical {
+pub trait JsonBorrowLexical {
 	fn as_lexical(&self) -> &JsonLexical<Self> {
 		unsafe { core::mem::transmute(self) }
 	}

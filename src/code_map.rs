@@ -3,6 +3,15 @@ use std::{borrow::Borrow, ops::Deref};
 
 use locspan::Span;
 
+use crate::{
+	JsonValue,
+	print::{
+		Indent, JsonPrintOptions,
+		sizes::{JsonSize, JsonSizesVisitor, printed_string_size},
+	},
+	visitor::JsonVisit,
+};
+
 pub type JsonCodeMapOffset = usize;
 
 /// Code-map.
@@ -10,6 +19,222 @@ pub type JsonCodeMapOffset = usize;
 pub struct JsonCodeMap(Vec<JsonCodeMapEntry>);
 
 impl JsonCodeMap {
+	/// Generates a code map for the given value.
+	///
+	/// The result is semantically equivalent to printing the value with the
+	/// given options and parsing it back, but much cheaper.
+	pub fn from_value(value: &JsonValue, options: &JsonPrintOptions) -> Self {
+		// First pass: decide for each array/object whether it is expanded or inline.
+		let mut sizes = Vec::new();
+		value.visit(JsonSizesVisitor::new(options, &mut sizes));
+
+		// Second pass: walk the value in traversal order, tracking the byte
+		// position and building one code-map entry per fragment.
+		let mut result = Self::default();
+		let mut pos = 0usize;
+		let mut sizes_offset = 0usize;
+		result.extent_from_value(value, options, &sizes, &mut sizes_offset, &mut pos, 0);
+		result
+	}
+
+	fn extent_from_value(
+		&mut self,
+		value: &JsonValue,
+		options: &JsonPrintOptions,
+		sizes: &[JsonSize],
+		sizes_offset: &mut usize,
+		pos: &mut usize,
+		indent: usize,
+	) -> usize {
+		let start = *pos;
+		let my_index = self.len();
+		self.0.push(JsonCodeMapEntry::default()); // placeholder filled at the end
+
+		let volume = match value {
+			JsonValue::Null => {
+				*pos += 4; // "null"
+				1
+			}
+			JsonValue::Boolean(b) => {
+				*pos += if *b { 4 } else { 5 }; // "true" / "false"
+				1
+			}
+			JsonValue::Number(n) => {
+				*pos += n.as_str().len();
+				1
+			}
+			JsonValue::String(s) => {
+				*pos += printed_string_size(s);
+				1
+			}
+			JsonValue::Array(items) => {
+				let size = sizes[*sizes_offset];
+				*sizes_offset += 1;
+				*pos += 1; // '['
+				let mut volume = 1;
+
+				match size {
+					JsonSize::Expanded => {
+						*pos += 1; // '\n'
+						let mut first = true;
+						for item in items.iter() {
+							if first {
+								first = false;
+							} else {
+								*pos += options.array_before_comma; // spaces before comma
+								*pos += 2; // ',\n'
+							}
+							*pos += indent_bytes(options.indent, indent + 1);
+							volume += self.extent_from_value(
+								item,
+								options,
+								sizes,
+								sizes_offset,
+								pos,
+								indent + 1,
+							);
+						}
+						if !first {
+							*pos += 1; // trailing '\n'
+						}
+						*pos += indent_bytes(options.indent, indent); // indent for ']'
+					}
+					JsonSize::Width(_) => {
+						let mut first = true;
+						for item in items.iter() {
+							if first {
+								first = false;
+								*pos += options.array_begin;
+							} else {
+								*pos += options.array_before_comma;
+								*pos += 1; // ','
+								*pos += options.array_after_comma;
+							}
+							volume += self.extent_from_value(
+								item,
+								options,
+								sizes,
+								sizes_offset,
+								pos,
+								indent + 1,
+							);
+						}
+						*pos += if first {
+							options.array_empty
+						} else {
+							options.array_end
+						};
+					}
+				}
+
+				*pos += 1; // ']'
+				volume
+			}
+			JsonValue::Object(obj) => {
+				let size = sizes[*sizes_offset];
+				*sizes_offset += 1;
+				*pos += 1; // '{'
+				let mut volume = 1;
+
+				match size {
+					JsonSize::Expanded => {
+						*pos += 1; // '\n'
+						let mut first = true;
+						for (key, value) in obj.iter() {
+							if first {
+								first = false;
+							} else {
+								*pos += options.object_before_comma;
+								*pos += 2; // ',\n'
+							}
+							*pos += indent_bytes(options.indent, indent + 1);
+							volume += self.extend_from_entry(
+								options,
+								sizes,
+								sizes_offset,
+								pos,
+								indent,
+								key.as_str(),
+								value,
+							);
+						}
+						if !first {
+							*pos += 1; // trailing '\n'
+						}
+						*pos += indent_bytes(options.indent, indent); // indent for '}'
+					}
+					JsonSize::Width(_) => {
+						let mut first = true;
+						for (key, value) in obj.iter() {
+							if first {
+								first = false;
+								*pos += options.object_begin;
+							} else {
+								*pos += options.object_before_comma;
+								*pos += 1; // ','
+								*pos += options.object_after_comma;
+							}
+							volume += self.extend_from_entry(
+								options,
+								sizes,
+								sizes_offset,
+								pos,
+								indent,
+								key.as_str(),
+								value,
+							);
+						}
+						*pos += if first {
+							options.object_empty
+						} else {
+							options.object_end
+						};
+					}
+				}
+
+				*pos += 1; // '}'
+				volume
+			}
+		};
+
+		self.0[my_index] = JsonCodeMapEntry::new(Span::new(start, *pos), volume);
+		volume
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	fn extend_from_entry(
+		&mut self,
+		options: &JsonPrintOptions,
+		sizes: &[JsonSize],
+		sizes_offset: &mut usize,
+		pos: &mut usize,
+		indent: usize,
+		key: &str,
+		value: &JsonValue,
+	) -> usize {
+		let entry_start = *pos;
+		let entry_index = self.len();
+		self.0.push(JsonCodeMapEntry::default());
+
+		// Key (always a leaf — no further recursion needed).
+		let key_start = *pos;
+		let key_index = self.len();
+		self.0.push(JsonCodeMapEntry::default());
+		*pos += printed_string_size(key);
+		self.0[key_index] = JsonCodeMapEntry::new(Span::new(key_start, *pos), 1);
+
+		*pos += options.object_before_colon;
+		*pos += 1; // ':'
+		*pos += options.object_after_colon;
+
+		let value_volume =
+			self.extent_from_value(value, options, sizes, sizes_offset, pos, indent + 1);
+
+		let entry_volume = 1 + 1 + value_volume; // entry + key + value subtree
+		self.0[entry_index] = JsonCodeMapEntry::new(Span::new(entry_start, *pos), entry_volume);
+		entry_volume
+	}
+
 	pub fn as_slice(&self) -> &[JsonCodeMapEntry] {
 		&self.0
 	}
@@ -127,11 +352,58 @@ impl<T: 'static + std::error::Error> std::error::Error for JsonMapped<T> {
 	}
 }
 
+// ── Helpers for `JsonCodeMap::from_print` ───────────────────────────────────
+
+fn indent_bytes(indent: Indent, level: usize) -> usize {
+	match indent {
+		Indent::Spaces(n) => n as usize * level,
+		Indent::Tabs(n) => n as usize * level, // \t is one byte
+	}
+}
+
 #[cfg(test)]
 mod tests {
-	use super::JsonCodeMapEntry;
-	use crate::{JsonValue, ParseJson};
+	use super::{JsonCodeMap, JsonCodeMapEntry};
+	use crate::{JsonParse, JsonPrint, JsonValue, print::JsonPrintOptions};
 	use locspan::Span;
+
+	/// Assert that `JsonCodeMap::from_print` agrees with print-then-parse
+	/// for the given value and options.
+	fn check(value: &JsonValue, options: &JsonPrintOptions) {
+		let printed = value.print_with(options).to_string();
+		let (_, expected) = JsonValue::parse_str(&printed).unwrap();
+		let got = JsonCodeMap::from_value(value, options);
+		assert_eq!(
+			got.as_slice(),
+			expected.as_slice(),
+			"mismatch for printed: {printed:?}"
+		);
+	}
+
+	#[test]
+	fn from_value_compact() {
+		// Scalars
+		for src in ["null", "true", "false", "42", "-3.14", "\"hello\""] {
+			let (value, _) = JsonValue::parse_str(src).unwrap();
+			check(&value, &JsonPrintOptions::COMPACT);
+		}
+
+		// Nested structure
+		let (value, _) = JsonValue::parse_str(r#"{"a":0,"b":[1,2]}"#).unwrap();
+		check(&value, &JsonPrintOptions::COMPACT);
+	}
+
+	#[test]
+	fn from_value_inline() {
+		let (value, _) = JsonValue::parse_str(r#"{"a":0,"b":[1,2]}"#).unwrap();
+		check(&value, &JsonPrintOptions::INLINE);
+	}
+
+	#[test]
+	fn from_value_pretty() {
+		let (value, _) = JsonValue::parse_str(r#"{"a":0,"b":[1,2,3,4,5,6,7,8,9,10]}"#).unwrap();
+		check(&value, &JsonPrintOptions::PRETTY);
+	}
 
 	#[test]
 	fn code_map_t1() {

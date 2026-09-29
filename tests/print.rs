@@ -1,4 +1,4 @@
-use json_syntax::{PrintJson, json};
+use json_syntax::{JsonPrint, json};
 
 #[test]
 fn print_01() {

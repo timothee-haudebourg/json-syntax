@@ -10,7 +10,7 @@ use serde::{
 };
 
 use crate::{
-	InvalidJsonNumber, JsonArrayBuf, JsonNumberBuf, JsonObject, JsonValue,
+	JsonArrayBuf, JsonNumberBuf, JsonObject, JsonValue,
 	object::{Entry, Key},
 	serde::NUMBER_TOKEN,
 };
@@ -180,13 +180,9 @@ impl<'de> Deserialize<'de> for JsonValue {
 				match visitor.next_key()? {
 					Some(MapTag::Number) => {
 						let value: String = visitor.next_value()?;
-						JsonNumberBuf::new(value.into_bytes().into())
+						JsonNumberBuf::new(value)
 							.map(JsonValue::Number)
-							.map_err(|InvalidJsonNumber(bytes)| {
-								serde::de::Error::custom(InvalidJsonNumber(
-									String::from_utf8(bytes.into_vec()).unwrap(),
-								))
-							})
+							.map_err(serde::de::Error::custom)
 					}
 					Some(MapTag::None(key)) => {
 						let mut object = JsonObject::new();

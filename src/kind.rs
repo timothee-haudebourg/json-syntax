@@ -3,7 +3,7 @@ use core::fmt;
 
 /// Value kind.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub enum Kind {
+pub enum JsonKind {
 	Null,
 	Boolean,
 	Number,
@@ -12,39 +12,39 @@ pub enum Kind {
 	Object,
 }
 
-impl std::ops::BitOr for Kind {
-	type Output = KindSet;
+impl std::ops::BitOr for JsonKind {
+	type Output = JsonKindSet;
 
-	fn bitor(self, other: Self) -> KindSet {
-		KindSet::from(self) | KindSet::from(other)
+	fn bitor(self, other: Self) -> JsonKindSet {
+		JsonKindSet::from(self) | JsonKindSet::from(other)
 	}
 }
 
-impl std::ops::BitOr<KindSet> for Kind {
-	type Output = KindSet;
+impl std::ops::BitOr<JsonKindSet> for JsonKind {
+	type Output = JsonKindSet;
 
-	fn bitor(self, other: KindSet) -> KindSet {
-		KindSet::from(self) | other
+	fn bitor(self, other: JsonKindSet) -> JsonKindSet {
+		JsonKindSet::from(self) | other
 	}
 }
 
-impl std::ops::BitAnd for Kind {
-	type Output = KindSet;
+impl std::ops::BitAnd for JsonKind {
+	type Output = JsonKindSet;
 
-	fn bitand(self, other: Self) -> KindSet {
-		KindSet::from(self) & KindSet::from(other)
+	fn bitand(self, other: Self) -> JsonKindSet {
+		JsonKindSet::from(self) & JsonKindSet::from(other)
 	}
 }
 
-impl std::ops::BitAnd<KindSet> for Kind {
-	type Output = KindSet;
+impl std::ops::BitAnd<JsonKindSet> for JsonKind {
+	type Output = JsonKindSet;
 
-	fn bitand(self, other: KindSet) -> KindSet {
-		KindSet::from(self) & other
+	fn bitand(self, other: JsonKindSet) -> JsonKindSet {
+		JsonKindSet::from(self) & other
 	}
 }
 
-impl fmt::Display for Kind {
+impl fmt::Display for JsonKind {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			Self::Null => write!(f, "null"),
@@ -59,11 +59,11 @@ impl fmt::Display for Kind {
 
 macro_rules! kind_set {
 	($($id:ident ($const:ident): $mask:literal),*) => {
-		/// Set of JSON value [`Kind`].
+		/// Set of JSON value [`JsonKind`].
 		#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-		pub struct KindSet(u8);
+		pub struct JsonKindSet(u8);
 
-		impl KindSet {
+		impl JsonKindSet {
 			$(
 				pub const $const: Self = Self($mask);
 			)*
@@ -73,76 +73,76 @@ macro_rules! kind_set {
 			}
 		}
 
-		impl std::ops::BitOr<Kind> for KindSet {
+		impl std::ops::BitOr<JsonKind> for JsonKindSet {
 			type Output = Self;
 
-			fn bitor(self, other: Kind) -> Self {
+			fn bitor(self, other: JsonKind) -> Self {
 				match other {
 					$(
-						Kind::$id => Self(self.0 | $mask)
+						JsonKind::$id => Self(self.0 | $mask)
 					),*
 				}
 			}
 		}
 
-		impl std::ops::BitOrAssign<Kind> for KindSet {
-			fn bitor_assign(&mut self, other: Kind) {
+		impl std::ops::BitOrAssign<JsonKind> for JsonKindSet {
+			fn bitor_assign(&mut self, other: JsonKind) {
 				match other {
 					$(
-						Kind::$id => self.0 |= $mask
+						JsonKind::$id => self.0 |= $mask
 					),*
 				}
 			}
 		}
 
-		impl std::ops::BitAnd<Kind> for KindSet {
+		impl std::ops::BitAnd<JsonKind> for JsonKindSet {
 			type Output = Self;
 
-			fn bitand(self, other: Kind) -> Self {
+			fn bitand(self, other: JsonKind) -> Self {
 				match other {
 					$(
-						Kind::$id => Self(self.0 & $mask)
+						JsonKind::$id => Self(self.0 & $mask)
 					),*
 				}
 			}
 		}
 
-		impl std::ops::BitAndAssign<Kind> for KindSet {
-			fn bitand_assign(&mut self, other: Kind) {
+		impl std::ops::BitAndAssign<JsonKind> for JsonKindSet {
+			fn bitand_assign(&mut self, other: JsonKind) {
 				match other {
 					$(
-						Kind::$id => self.0 &= $mask
+						JsonKind::$id => self.0 &= $mask
 					),*
 				}
 			}
 		}
 
-		impl From<Kind> for KindSet {
-			fn from(value: Kind) -> Self {
+		impl From<JsonKind> for JsonKindSet {
+			fn from(value: JsonKind) -> Self {
 				match value {
 					$(
-						Kind::$id => Self($mask)
+						JsonKind::$id => Self($mask)
 					),*
 				}
 			}
 		}
 
 		#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-		pub struct KindSetIter(u8);
+		pub struct JsonKindSetIter(u8);
 
-		impl Iterator for KindSetIter {
-			type Item = Kind;
+		impl Iterator for JsonKindSetIter {
+			type Item = JsonKind;
 
 			fn size_hint(&self) -> (usize, Option<usize>) {
 				let len = self.0.count_ones() as usize;
 				(len, Some(len))
 			}
 
-			fn next(&mut self) -> Option<Kind> {
+			fn next(&mut self) -> Option<JsonKind> {
 				$(
 					if self.0 & $mask != 0 {
 						self.0 &= !$mask;
-						return Some(Kind::$id)
+						return Some(JsonKind::$id)
 					}
 				)*
 
@@ -150,13 +150,13 @@ macro_rules! kind_set {
 			}
 		}
 
-		impl DoubleEndedIterator for KindSetIter {
-			fn next_back(&mut self) -> Option<Kind> {
+		impl DoubleEndedIterator for JsonKindSetIter {
+			fn next_back(&mut self) -> Option<JsonKind> {
 				let mut result = None;
 
 				$(
 					if self.0 & $mask != 0 {
-						result = Some((Kind::$id, $mask));
+						result = Some((JsonKind::$id, $mask));
 					}
 				)*
 
@@ -167,8 +167,8 @@ macro_rules! kind_set {
 			}
 		}
 
-		impl std::iter::FusedIterator for KindSetIter {}
-		impl std::iter::ExactSizeIterator for KindSetIter {}
+		impl std::iter::FusedIterator for JsonKindSetIter {}
+		impl std::iter::ExactSizeIterator for JsonKindSetIter {}
 	};
 }
 
@@ -181,7 +181,7 @@ kind_set! {
 	Object (OBJECT):   0b100000
 }
 
-impl KindSet {
+impl JsonKindSet {
 	pub const fn none() -> Self {
 		Self(0)
 	}
@@ -194,8 +194,8 @@ impl KindSet {
 		self.0 == 0
 	}
 
-	pub fn iter(&self) -> KindSetIter {
-		KindSetIter(self.0)
+	pub fn iter(&self) -> JsonKindSetIter {
+		JsonKindSetIter(self.0)
 	}
 
 	/// Displays this set as a disjunction.
@@ -203,15 +203,15 @@ impl KindSet {
 	/// # Example
 	///
 	/// ```
-	/// # use json_syntax::{Kind, KindSet};
-	/// let set = Kind::Null | Kind::String | Kind::Object;
+	/// # use json_syntax::{JsonKind, JsonKindSet};
+	/// let set = JsonKind::Null | JsonKind::String | JsonKind::Object;
 	/// assert_eq!(set.as_disjunction().to_string(), "null, string or object");
-	/// assert_eq!(KindSet::ARRAY.as_disjunction().to_string(), "array");
-	/// assert_eq!(KindSet::all().as_disjunction().to_string(), "anything");
-	/// assert_eq!(KindSet::none().as_disjunction().to_string(), "nothing");
+	/// assert_eq!(JsonKindSet::ARRAY.as_disjunction().to_string(), "array");
+	/// assert_eq!(JsonKindSet::all().as_disjunction().to_string(), "anything");
+	/// assert_eq!(JsonKindSet::none().as_disjunction().to_string(), "nothing");
 	/// ```
-	pub fn as_disjunction(self) -> KindSetDisjunction {
-		KindSetDisjunction(self)
+	pub fn as_disjunction(self) -> JsonKindSetDisjunction {
+		JsonKindSetDisjunction(self)
 	}
 
 	/// Displays this set as a conjunction.
@@ -219,19 +219,19 @@ impl KindSet {
 	/// # Example
 	///
 	/// ```
-	/// # use json_syntax::{Kind, KindSet};
-	/// let set = Kind::Null | Kind::String | Kind::Object;
+	/// # use json_syntax::{JsonKind, JsonKindSet};
+	/// let set = JsonKind::Null | JsonKind::String | JsonKind::Object;
 	/// assert_eq!(set.as_conjunction().to_string(), "null, string and object");
-	/// assert_eq!(KindSet::ARRAY.as_conjunction().to_string(), "array");
-	/// assert_eq!(KindSet::all().as_conjunction().to_string(), "anything");
-	/// assert_eq!(KindSet::none().as_conjunction().to_string(), "nothing");
+	/// assert_eq!(JsonKindSet::ARRAY.as_conjunction().to_string(), "array");
+	/// assert_eq!(JsonKindSet::all().as_conjunction().to_string(), "anything");
+	/// assert_eq!(JsonKindSet::none().as_conjunction().to_string(), "nothing");
 	/// ```
-	pub fn as_conjunction(self) -> KindSetConjunction {
-		KindSetConjunction(self)
+	pub fn as_conjunction(self) -> JsonKindSetConjunction {
+		JsonKindSetConjunction(self)
 	}
 }
 
-impl std::ops::BitOr for KindSet {
+impl std::ops::BitOr for JsonKindSet {
 	type Output = Self;
 
 	fn bitor(self, other: Self) -> Self {
@@ -239,13 +239,13 @@ impl std::ops::BitOr for KindSet {
 	}
 }
 
-impl std::ops::BitOrAssign for KindSet {
+impl std::ops::BitOrAssign for JsonKindSet {
 	fn bitor_assign(&mut self, other: Self) {
 		self.0 |= other.0
 	}
 }
 
-impl std::ops::BitAnd for KindSet {
+impl std::ops::BitAnd for JsonKindSet {
 	type Output = Self;
 
 	fn bitand(self, other: Self) -> Self {
@@ -253,31 +253,31 @@ impl std::ops::BitAnd for KindSet {
 	}
 }
 
-impl std::ops::BitAndAssign for KindSet {
+impl std::ops::BitAndAssign for JsonKindSet {
 	fn bitand_assign(&mut self, other: Self) {
 		self.0 &= other.0
 	}
 }
 
-impl IntoIterator for &KindSet {
-	type IntoIter = KindSetIter;
-	type Item = Kind;
+impl IntoIterator for &JsonKindSet {
+	type IntoIter = JsonKindSetIter;
+	type Item = JsonKind;
 
-	fn into_iter(self) -> KindSetIter {
+	fn into_iter(self) -> JsonKindSetIter {
 		self.iter()
 	}
 }
 
-impl IntoIterator for KindSet {
-	type IntoIter = KindSetIter;
-	type Item = Kind;
+impl IntoIterator for JsonKindSet {
+	type IntoIter = JsonKindSetIter;
+	type Item = JsonKind;
 
-	fn into_iter(self) -> KindSetIter {
+	fn into_iter(self) -> JsonKindSetIter {
 		self.iter()
 	}
 }
 
-impl fmt::Display for KindSet {
+impl fmt::Display for JsonKindSet {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		for (i, kind) in self.into_iter().enumerate() {
 			if i > 0 {
@@ -291,13 +291,13 @@ impl fmt::Display for KindSet {
 	}
 }
 
-/// Displays a `KindSet` as a disjunction.
+/// Displays a `JsonKindSet` as a disjunction.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct KindSetDisjunction(pub KindSet);
+pub struct JsonKindSetDisjunction(pub JsonKindSet);
 
-impl fmt::Display for KindSetDisjunction {
+impl fmt::Display for JsonKindSetDisjunction {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		if self.0 == KindSet::all() {
+		if self.0 == JsonKindSet::all() {
 			f.write_str("anything")
 		} else {
 			let mut iter = self.0.into_iter();
@@ -320,13 +320,13 @@ impl fmt::Display for KindSetDisjunction {
 	}
 }
 
-/// Displays a `KindSet` as a conjunction.
+/// Displays a `JsonKindSet` as a conjunction.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct KindSetConjunction(pub KindSet);
+pub struct JsonKindSetConjunction(pub JsonKindSet);
 
-impl fmt::Display for KindSetConjunction {
+impl fmt::Display for JsonKindSetConjunction {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		if self.0 == KindSet::all() {
+		if self.0 == JsonKindSet::all() {
 			f.write_str("anything")
 		} else {
 			let mut iter = self.0.into_iter();

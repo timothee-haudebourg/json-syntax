@@ -3,23 +3,23 @@ use std::fmt::Display;
 
 use crate::{
 	JsonNumber,
-	visitor::{JsonVisitor, VisitJson},
+	visitor::{JsonVisit, JsonVisitor},
 };
 
-use super::{Options, Spaces, sizes::Size};
+use super::{JsonPrintOptions, Spaces, sizes::JsonSize};
 
-pub struct Printer<'a, 'f> {
-	options: &'a Options,
-	sizes: &'a [Size],
+pub struct JsonPrinter<'a, 'f> {
+	options: &'a JsonPrintOptions,
+	sizes: &'a [JsonSize],
 	offset: &'a mut usize,
 	indent: usize,
 	formatter: &'a mut fmt::Formatter<'f>,
 }
 
-impl<'a, 'f> Printer<'a, 'f> {
+impl<'a, 'f> JsonPrinter<'a, 'f> {
 	pub fn new(
-		options: &'a Options,
-		sizes: &'a [Size],
+		options: &'a JsonPrintOptions,
+		sizes: &'a [JsonSize],
 		offset: &'a mut usize,
 		indent: usize,
 		formatter: &'a mut fmt::Formatter<'f>,
@@ -34,7 +34,7 @@ impl<'a, 'f> Printer<'a, 'f> {
 	}
 }
 
-impl<'a, 'f> JsonVisitor for Printer<'a, 'f> {
+impl<'a, 'f> JsonVisitor for JsonPrinter<'a, 'f> {
 	type Output = fmt::Result;
 
 	fn visit_null(self) -> Self::Output {
@@ -57,14 +57,14 @@ impl<'a, 'f> JsonVisitor for Printer<'a, 'f> {
 		string_literal(value, self.formatter)
 	}
 
-	fn visit_array<I: IntoIterator<Item: VisitJson>>(self, items: I) -> Self::Output {
+	fn visit_array<I: IntoIterator<Item: JsonVisit>>(self, items: I) -> Self::Output {
 		let size = self.sizes[*self.offset];
 		*self.offset += 1;
 
 		self.formatter.write_str("[")?;
 
 		match size {
-			Size::Expanded => {
+			JsonSize::Expanded => {
 				self.formatter.write_str("\n")?;
 
 				let mut empty = true;
@@ -81,7 +81,7 @@ impl<'a, 'f> JsonVisitor for Printer<'a, 'f> {
 						.by(self.indent + 1)
 						.fmt(self.formatter)?;
 
-					let item_printer = Printer {
+					let item_printer = JsonPrinter {
 						options: self.options,
 						sizes: self.sizes,
 						offset: self.offset,
@@ -98,7 +98,7 @@ impl<'a, 'f> JsonVisitor for Printer<'a, 'f> {
 
 				self.options.indent.by(self.indent).fmt(self.formatter)?;
 			}
-			Size::Width(_) => {
+			JsonSize::Width(_) => {
 				let mut empty = true;
 				for item in items {
 					if empty {
@@ -110,7 +110,7 @@ impl<'a, 'f> JsonVisitor for Printer<'a, 'f> {
 						Spaces(self.options.array_after_comma).fmt(self.formatter)?
 					}
 
-					let item_printer = Printer {
+					let item_printer = JsonPrinter {
 						options: self.options,
 						sizes: self.sizes,
 						offset: self.offset,
@@ -132,7 +132,7 @@ impl<'a, 'f> JsonVisitor for Printer<'a, 'f> {
 		self.formatter.write_str("]")
 	}
 
-	fn visit_object<E: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: VisitJson>(
+	fn visit_object<E: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: JsonVisit>(
 		self,
 		entries: E,
 	) -> Self::Output {
@@ -142,7 +142,7 @@ impl<'a, 'f> JsonVisitor for Printer<'a, 'f> {
 		self.formatter.write_str("{")?;
 
 		match size {
-			Size::Expanded => {
+			JsonSize::Expanded => {
 				self.formatter.write_str("\n")?;
 
 				let mut empty = true;
@@ -165,7 +165,7 @@ impl<'a, 'f> JsonVisitor for Printer<'a, 'f> {
 					self.formatter.write_str(":")?;
 					Spaces(self.options.object_after_colon).fmt(self.formatter)?;
 
-					let value_printer = Printer {
+					let value_printer = JsonPrinter {
 						options: self.options,
 						sizes: self.sizes,
 						offset: self.offset,
@@ -182,7 +182,7 @@ impl<'a, 'f> JsonVisitor for Printer<'a, 'f> {
 
 				self.options.indent.by(self.indent).fmt(self.formatter)?;
 			}
-			Size::Width(_) => {
+			JsonSize::Width(_) => {
 				let mut empty = true;
 				for (key, value) in entries {
 					if empty {
@@ -199,7 +199,7 @@ impl<'a, 'f> JsonVisitor for Printer<'a, 'f> {
 					self.formatter.write_str(":")?;
 					Spaces(self.options.object_after_colon).fmt(self.formatter)?;
 
-					let value_printer = Printer {
+					let value_printer = JsonPrinter {
 						options: self.options,
 						sizes: self.sizes,
 						offset: self.offset,

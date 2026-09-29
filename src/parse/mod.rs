@@ -1,6 +1,7 @@
 use decoded_char::DecodedChar;
 use locspan::Span;
-use std::{fmt, io};
+use std::fmt;
+use utf8_decode::Utf8Error;
 
 mod array;
 mod boolean;
@@ -57,26 +58,32 @@ impl Default for Options {
 	}
 }
 
-pub trait ParseJson: Sized {
-	fn parse_slice(content: &[u8]) -> Result<(Self, JsonCodeMap), Error> {
+pub trait JsonParse: Sized {
+	fn parse_slice(content: &[u8]) -> Result<(Self, JsonCodeMap), JsonParseError> {
 		Self::parse_utf8(utf8_decode::Decoder::new(content.iter().copied()))
-			.map_err(Error::io_into_utf8)
+			.map_err(JsonParseError::erase_utf8_error)
 	}
 
-	fn parse_slice_with(content: &[u8], options: Options) -> Result<(Self, JsonCodeMap), Error> {
+	fn parse_slice_with(
+		content: &[u8],
+		options: Options,
+	) -> Result<(Self, JsonCodeMap), JsonParseError> {
 		Self::parse_utf8_with(utf8_decode::Decoder::new(content.iter().copied()), options)
-			.map_err(Error::io_into_utf8)
+			.map_err(JsonParseError::erase_utf8_error)
 	}
 
-	fn parse_str(content: &str) -> Result<(Self, JsonCodeMap), Error> {
+	fn parse_str(content: &str) -> Result<(Self, JsonCodeMap), JsonParseError> {
 		Self::parse_utf8(content.chars().map(Ok))
 	}
 
-	fn parse_str_with(content: &str, options: Options) -> Result<(Self, JsonCodeMap), Error> {
+	fn parse_str_with(
+		content: &str,
+		options: Options,
+	) -> Result<(Self, JsonCodeMap), JsonParseError> {
 		Self::parse_utf8_with(content.chars().map(Ok), options)
 	}
 
-	fn parse_infallible_utf8<C>(chars: C) -> Result<(Self, JsonCodeMap), Error>
+	fn parse_infallible_utf8<C>(chars: C) -> Result<(Self, JsonCodeMap), JsonParseError>
 	where
 		C: Iterator<Item = char>,
 	{
@@ -86,67 +93,76 @@ pub trait ParseJson: Sized {
 	fn parse_utf8_infallible_with<C>(
 		chars: C,
 		options: Options,
-	) -> Result<(Self, JsonCodeMap), Error>
+	) -> Result<(Self, JsonCodeMap), JsonParseError>
 	where
 		C: Iterator<Item = char>,
 	{
 		Self::parse_infallible_with(chars.map(DecodedChar::from_utf8), options)
 	}
 
-	fn parse_utf8<C, E>(chars: C) -> Result<(Self, JsonCodeMap), Error<E>>
+	fn parse_utf8<C, E>(chars: C) -> Result<(Self, JsonCodeMap), JsonParseError<E>>
 	where
 		C: Iterator<Item = Result<char, E>>,
 	{
 		Self::parse(chars.map(|c| c.map(DecodedChar::from_utf8)))
 	}
 
-	fn parse_utf8_with<C, E>(chars: C, options: Options) -> Result<(Self, JsonCodeMap), Error<E>>
+	fn parse_utf8_with<C, E>(
+		chars: C,
+		options: Options,
+	) -> Result<(Self, JsonCodeMap), JsonParseError<E>>
 	where
 		C: Iterator<Item = Result<char, E>>,
 	{
 		Self::parse_with(chars.map(|c| c.map(DecodedChar::from_utf8)), options)
 	}
 
-	fn parse_infallible<C>(chars: C) -> Result<(Self, JsonCodeMap), Error>
+	fn parse_infallible<C>(chars: C) -> Result<(Self, JsonCodeMap), JsonParseError>
 	where
 		C: Iterator<Item = DecodedChar>,
 	{
 		let mut parser = Parser::new(chars.map(Ok));
-		let value = Self::parse_in(&mut parser, Context::None)?.0;
+		let value = Self::parse_in(&mut parser, JsonParsingContext::None)?.0;
 		Ok((value, parser.code_map))
 	}
 
-	fn parse_infallible_with<C>(chars: C, options: Options) -> Result<(Self, JsonCodeMap), Error>
+	fn parse_infallible_with<C>(
+		chars: C,
+		options: Options,
+	) -> Result<(Self, JsonCodeMap), JsonParseError>
 	where
 		C: Iterator<Item = DecodedChar>,
 	{
 		let mut parser = Parser::new_with(chars.map(Ok), options);
-		let value = Self::parse_in(&mut parser, Context::None)?.0;
+		let value = Self::parse_in(&mut parser, JsonParsingContext::None)?.0;
 		Ok((value, parser.code_map))
 	}
 
-	fn parse<C, E>(chars: C) -> Result<(Self, JsonCodeMap), Error<E>>
+	fn parse<C, E>(chars: C) -> Result<(Self, JsonCodeMap), JsonParseError<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
 		let mut parser = Parser::new(chars);
-		let value = Self::parse_in(&mut parser, Context::None)?.0;
+		let value = Self::parse_in(&mut parser, JsonParsingContext::None)?.0;
 		Ok((value, parser.code_map))
 	}
 
-	fn parse_with<C, E>(chars: C, options: Options) -> Result<(Self, JsonCodeMap), Error<E>>
+	fn parse_with<C, E>(
+		chars: C,
+		options: Options,
+	) -> Result<(Self, JsonCodeMap), JsonParseError<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
 		let mut parser = Parser::new_with(chars, options);
-		let value = Self::parse_in(&mut parser, Context::None)?.0;
+		let value = Self::parse_in(&mut parser, JsonParsingContext::None)?.0;
 		Ok((value, parser.code_map))
 	}
 
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
-		context: Context,
-	) -> Result<(Self, usize), Error<E>>
+		context: JsonParsingContext,
+	) -> Result<(Self, usize), JsonParseError<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>;
 }
@@ -207,7 +223,7 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Parser<C, E> {
 		entry.volume = entry_count - i;
 	}
 
-	fn peek_char(&mut self) -> Result<Option<char>, Error<E>> {
+	fn peek_char(&mut self) -> Result<Option<char>, JsonParseError<E>> {
 		match self.pending {
 			Some(c) => Ok(Some(c.chr())),
 			None => match self.chars.next() {
@@ -215,20 +231,20 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Parser<C, E> {
 					self.pending = Some(c);
 					Ok(Some(c.chr()))
 				}
-				Some(Err(e)) => Err(Error::Stream(self.position, e)),
+				Some(Err(e)) => Err(JsonParseError::Stream(self.position, e)),
 				None => Ok(None),
 			},
 		}
 	}
 
-	fn next_char(&mut self) -> Result<(usize, Option<char>), Error<E>> {
+	fn next_char(&mut self) -> Result<(usize, Option<char>), JsonParseError<E>> {
 		let c = match self.pending.take() {
 			Some(c) => Some(c),
 			None => self
 				.chars
 				.next()
 				.transpose()
-				.map_err(|e| Error::Stream(self.position, e))?,
+				.map_err(|e| JsonParseError::Stream(self.position, e))?,
 		};
 
 		let p = self.position;
@@ -240,7 +256,7 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Parser<C, E> {
 		Ok((p, c))
 	}
 
-	fn skip_whitespaces(&mut self) -> Result<(), Error<E>> {
+	fn skip_whitespaces(&mut self) -> Result<(), JsonParseError<E>> {
 		while let Some(c) = self.peek_char()? {
 			if is_whitespace(c) {
 				self.next_char()?;
@@ -255,7 +271,7 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Parser<C, E> {
 
 /// Parse error.
 #[derive(Debug)]
-pub enum Error<E = core::convert::Infallible> {
+pub enum JsonParseError<E = core::convert::Infallible> {
 	/// Stream error.
 	///
 	/// The first parameter is the byte index at which the error occurred.
@@ -285,7 +301,7 @@ pub enum Error<E = core::convert::Infallible> {
 	InvalidUtf8(usize),
 }
 
-impl<E> Error<E> {
+impl<E> JsonParseError<E> {
 	/// Creates an `Unexpected` error.
 	#[inline(always)]
 	fn unexpected(position: usize, c: Option<char>) -> Self {
@@ -316,20 +332,20 @@ impl<E> Error<E> {
 	}
 }
 
-impl Error<io::Error> {
-	fn io_into_utf8(self) -> Error {
+impl JsonParseError<Utf8Error> {
+	fn erase_utf8_error(self) -> JsonParseError {
 		match self {
-			Self::Stream(p, _) => Error::InvalidUtf8(p),
-			Self::Unexpected(p, e) => Error::Unexpected(p, e),
-			Self::InvalidUnicodeCodePoint(s, e) => Error::InvalidUnicodeCodePoint(s, e),
-			Self::MissingLowSurrogate(s, e) => Error::MissingLowSurrogate(s, e),
-			Self::InvalidLowSurrogate(s, a, b) => Error::InvalidLowSurrogate(s, a, b),
-			Self::InvalidUtf8(p) => Error::InvalidUtf8(p),
+			Self::Stream(p, _) => JsonParseError::InvalidUtf8(p),
+			Self::Unexpected(p, e) => JsonParseError::Unexpected(p, e),
+			Self::InvalidUnicodeCodePoint(s, e) => JsonParseError::InvalidUnicodeCodePoint(s, e),
+			Self::MissingLowSurrogate(s, e) => JsonParseError::MissingLowSurrogate(s, e),
+			Self::InvalidLowSurrogate(s, a, b) => JsonParseError::InvalidLowSurrogate(s, a, b),
+			Self::InvalidUtf8(p) => JsonParseError::InvalidUtf8(p),
 		}
 	}
 }
 
-impl<E: fmt::Display> fmt::Display for Error<E> {
+impl<E: fmt::Display> fmt::Display for JsonParseError<E> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			Self::Stream(_, e) => e.fmt(f),
@@ -343,7 +359,7 @@ impl<E: fmt::Display> fmt::Display for Error<E> {
 	}
 }
 
-impl<E: 'static + std::error::Error> std::error::Error for Error<E> {
+impl<E: 'static + std::error::Error> std::error::Error for JsonParseError<E> {
 	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
 		match self {
 			Self::Stream(_, e) => Some(e),
@@ -356,14 +372,14 @@ impl<E: 'static + std::error::Error> std::error::Error for Error<E> {
 ///
 /// Defines what characters are allowed after a value.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Context {
+pub enum JsonParsingContext {
 	None,
 	Array,
 	ObjectKey,
 	ObjectValue,
 }
 
-impl Context {
+impl JsonParsingContext {
 	/// Checks if the given character `c` can follow a value in this context.
 	pub fn follows(&self, c: char) -> bool {
 		match self {

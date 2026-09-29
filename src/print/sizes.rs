@@ -1,13 +1,13 @@
 use crate::{
 	JsonNumber,
-	visitor::{JsonVisitor, VisitJson},
+	visitor::{JsonVisit, JsonVisitor},
 };
 
-use super::{Limit, Options};
+use super::{JsonPrintOptions, Limit};
 
 /// The size of a value.
 #[derive(Clone, Copy)]
-pub enum Size {
+pub enum JsonSize {
 	/// The value (array or object) is expanded on multiple lines.
 	Expanded,
 
@@ -15,7 +15,7 @@ pub enum Size {
 	Width(usize),
 }
 
-impl Size {
+impl JsonSize {
 	pub fn add(&mut self, other: Self) {
 		*self = match (*self, other) {
 			(Self::Width(a), Self::Width(b)) => Self::Width(a + b),
@@ -24,58 +24,58 @@ impl Size {
 	}
 }
 
-pub struct SizesVisitor<'a> {
+pub struct JsonSizesVisitor<'a> {
 	// Formatting options.
-	options: &'a Options,
+	options: &'a JsonPrintOptions,
 
 	// Stores the size of expandable values (arrays and objects).
-	sizes: &'a mut Vec<Size>,
+	sizes: &'a mut Vec<JsonSize>,
 }
 
-impl<'a> SizesVisitor<'a> {
-	pub fn new(options: &'a Options, sizes: &'a mut Vec<Size>) -> Self {
+impl<'a> JsonSizesVisitor<'a> {
+	pub fn new(options: &'a JsonPrintOptions, sizes: &'a mut Vec<JsonSize>) -> Self {
 		Self { options, sizes }
 	}
 }
 
-impl<'a> JsonVisitor for SizesVisitor<'a> {
-	type Output = Size;
+impl<'a> JsonVisitor for JsonSizesVisitor<'a> {
+	type Output = JsonSize;
 
 	fn visit_null(self) -> Self::Output {
-		Size::Width(4)
+		JsonSize::Width(4)
 	}
 
 	fn visit_bool(self, value: bool) -> Self::Output {
 		if value {
-			Size::Width(4)
+			JsonSize::Width(4)
 		} else {
-			Size::Width(5)
+			JsonSize::Width(5)
 		}
 	}
 
 	fn visit_number(self, value: &JsonNumber) -> Self::Output {
-		Size::Width(value.as_str().len())
+		JsonSize::Width(value.as_str().len())
 	}
 
 	fn visit_string(self, value: &str) -> Self::Output {
-		Size::Width(printed_string_size(value))
+		JsonSize::Width(printed_string_size(value))
 	}
 
-	fn visit_array<I: IntoIterator<Item: VisitJson>>(self, items: I) -> Self::Output {
+	fn visit_array<I: IntoIterator<Item: JsonVisit>>(self, items: I) -> Self::Output {
 		let index = self.sizes.len();
-		self.sizes.push(Size::Width(0));
+		self.sizes.push(JsonSize::Width(0));
 
-		let mut size = Size::Width(2 + self.options.object_begin + self.options.object_end);
+		let mut size = JsonSize::Width(2 + self.options.object_begin + self.options.object_end);
 
 		let mut len = 0;
 		for (i, item) in items.into_iter().enumerate() {
 			if i > 0 {
-				size.add(Size::Width(
+				size.add(JsonSize::Width(
 					1 + self.options.array_before_comma + self.options.array_after_comma,
 				));
 			}
 
-			let item_visitor = SizesVisitor {
+			let item_visitor = JsonSizesVisitor {
 				options: self.options,
 				sizes: &mut *self.sizes,
 			};
@@ -86,29 +86,29 @@ impl<'a> JsonVisitor for SizesVisitor<'a> {
 		}
 
 		let size = match size {
-			Size::Expanded => Size::Expanded,
-			Size::Width(width) => match self.options.array_limit {
-				None => Size::Width(width),
-				Some(Limit::Always) => Size::Expanded,
+			JsonSize::Expanded => JsonSize::Expanded,
+			JsonSize::Width(width) => match self.options.array_limit {
+				None => JsonSize::Width(width),
+				Some(Limit::Always) => JsonSize::Expanded,
 				Some(Limit::Item(i)) => {
 					if len > i {
-						Size::Expanded
+						JsonSize::Expanded
 					} else {
-						Size::Width(width)
+						JsonSize::Width(width)
 					}
 				}
 				Some(Limit::ItemOrWidth(i, w)) => {
 					if len > i || width > w {
-						Size::Expanded
+						JsonSize::Expanded
 					} else {
-						Size::Width(width)
+						JsonSize::Width(width)
 					}
 				}
 				Some(Limit::Width(w)) => {
 					if width > w {
-						Size::Expanded
+						JsonSize::Expanded
 					} else {
-						Size::Width(width)
+						JsonSize::Width(width)
 					}
 				}
 			},
@@ -118,30 +118,30 @@ impl<'a> JsonVisitor for SizesVisitor<'a> {
 		size
 	}
 
-	fn visit_object<E: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: VisitJson>(
+	fn visit_object<E: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: JsonVisit>(
 		self,
 		entries: E,
 	) -> Self::Output {
 		let index = self.sizes.len();
-		self.sizes.push(Size::Width(0));
+		self.sizes.push(JsonSize::Width(0));
 
-		let mut size = Size::Width(2 + self.options.object_begin + self.options.object_end);
+		let mut size = JsonSize::Width(2 + self.options.object_begin + self.options.object_end);
 
 		let mut len = 0;
 		for (i, (key, value)) in entries.into_iter().enumerate() {
 			if i > 0 {
-				size.add(Size::Width(
+				size.add(JsonSize::Width(
 					1 + self.options.object_before_comma + self.options.object_after_comma,
 				));
 			}
 
-			size.add(Size::Width(
+			size.add(JsonSize::Width(
 				printed_string_size(key.as_ref())
 					+ 1 + self.options.object_before_colon
 					+ self.options.object_after_colon,
 			));
 
-			let value_visitor = SizesVisitor {
+			let value_visitor = JsonSizesVisitor {
 				options: self.options,
 				sizes: &mut *self.sizes,
 			};
@@ -151,29 +151,29 @@ impl<'a> JsonVisitor for SizesVisitor<'a> {
 		}
 
 		let size = match size {
-			Size::Expanded => Size::Expanded,
-			Size::Width(width) => match self.options.object_limit {
-				None => Size::Width(width),
-				Some(Limit::Always) => Size::Expanded,
+			JsonSize::Expanded => JsonSize::Expanded,
+			JsonSize::Width(width) => match self.options.object_limit {
+				None => JsonSize::Width(width),
+				Some(Limit::Always) => JsonSize::Expanded,
 				Some(Limit::Item(i)) => {
 					if len > i {
-						Size::Expanded
+						JsonSize::Expanded
 					} else {
-						Size::Width(width)
+						JsonSize::Width(width)
 					}
 				}
 				Some(Limit::ItemOrWidth(i, w)) => {
 					if len > i || width > w {
-						Size::Expanded
+						JsonSize::Expanded
 					} else {
-						Size::Width(width)
+						JsonSize::Width(width)
 					}
 				}
 				Some(Limit::Width(w)) => {
 					if width > w {
-						Size::Expanded
+						JsonSize::Expanded
 					} else {
-						Size::Width(width)
+						JsonSize::Width(width)
 					}
 				}
 			},

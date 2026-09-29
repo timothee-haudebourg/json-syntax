@@ -1,17 +1,17 @@
-use super::{Context, Error, ParseJson, Parser};
-use crate::{JsonNumberBuf, number::DefaultBuffer};
+use super::{JsonParse, JsonParseError, JsonParsingContext, Parser};
+use crate::{JsonNumberBuf, number::JsonNumberRawBuffer};
 use decoded_char::DecodedChar;
 
-impl ParseJson for JsonNumberBuf {
+impl JsonParse for JsonNumberBuf {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
-		context: Context,
-	) -> Result<(Self, usize), Error<E>>
+		context: JsonParsingContext,
+	) -> Result<(Self, usize), JsonParseError<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
 		let i = parser.begin_fragment();
-		let mut buffer = DefaultBuffer::new();
+		let mut buffer = JsonNumberRawBuffer::new();
 
 		enum State {
 			Init,
@@ -33,12 +33,12 @@ impl ParseJson for JsonNumberBuf {
 					'-' => state = State::FirstDigit,
 					'0' => state = State::Zero,
 					'1'..='9' => state = State::NonZero,
-					_ => return Err(Error::unexpected(parser.position, Some(c))),
+					_ => return Err(JsonParseError::unexpected(parser.position, Some(c))),
 				},
 				State::FirstDigit => match c {
 					'0' => state = State::Zero,
 					'1'..='9' => state = State::NonZero,
-					_ => return Err(Error::unexpected(parser.position, Some(c))),
+					_ => return Err(JsonParseError::unexpected(parser.position, Some(c))),
 				},
 				State::Zero => match c {
 					'.' => state = State::FractionalFirst,
@@ -47,7 +47,7 @@ impl ParseJson for JsonNumberBuf {
 						if context.follows(c) {
 							break;
 						} else {
-							return Err(Error::unexpected(parser.position, Some(c)));
+							return Err(JsonParseError::unexpected(parser.position, Some(c)));
 						}
 					}
 				},
@@ -59,13 +59,13 @@ impl ParseJson for JsonNumberBuf {
 						if context.follows(c) {
 							break;
 						} else {
-							return Err(Error::unexpected(parser.position, Some(c)));
+							return Err(JsonParseError::unexpected(parser.position, Some(c)));
 						}
 					}
 				},
 				State::FractionalFirst => match c {
 					'0'..='9' => state = State::FractionalRest,
-					_ => return Err(Error::unexpected(parser.position, Some(c))),
+					_ => return Err(JsonParseError::unexpected(parser.position, Some(c))),
 				},
 				State::FractionalRest => match c {
 					'0'..='9' => state = State::FractionalRest,
@@ -74,18 +74,18 @@ impl ParseJson for JsonNumberBuf {
 						if context.follows(c) {
 							break;
 						} else {
-							return Err(Error::unexpected(parser.position, Some(c)));
+							return Err(JsonParseError::unexpected(parser.position, Some(c)));
 						}
 					}
 				},
 				State::ExponentSign => match c {
 					'+' | '-' => state = State::ExponentFirst,
 					'0'..='9' => state = State::ExponentRest,
-					_ => return Err(Error::unexpected(parser.position, Some(c))),
+					_ => return Err(JsonParseError::unexpected(parser.position, Some(c))),
 				},
 				State::ExponentFirst => match c {
 					'0'..='9' => state = State::ExponentRest,
-					_ => return Err(Error::unexpected(parser.position, Some(c))),
+					_ => return Err(JsonParseError::unexpected(parser.position, Some(c))),
 				},
 				State::ExponentRest => match c {
 					'0'..='9' => state = State::ExponentRest,
@@ -93,7 +93,7 @@ impl ParseJson for JsonNumberBuf {
 						if context.follows(c) {
 							break;
 						} else {
-							return Err(Error::unexpected(parser.position, Some(c)));
+							return Err(JsonParseError::unexpected(parser.position, Some(c)));
 						}
 					}
 				},
@@ -111,7 +111,7 @@ impl ParseJson for JsonNumberBuf {
 			parser.end_fragment(i);
 			Ok((unsafe { JsonNumberBuf::new_unchecked(buffer) }, i))
 		} else {
-			Err(Error::unexpected(parser.position, None))
+			Err(JsonParseError::unexpected(parser.position, None))
 		}
 	}
 }

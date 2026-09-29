@@ -1,5 +1,5 @@
 use crate::code_map::{JsonCodeMapOffset, JsonMapped};
-use crate::lexical::{BorrowJsonLexical, JsonLexicalEq, JsonLexicalHash, JsonLexicalPartialEq};
+use crate::lexical::{JsonBorrowLexical, JsonLexicalEq, JsonLexicalHash, JsonLexicalPartialEq};
 use crate::{JsonCodeMap, JsonFragment, JsonValue};
 use btree_indexmap::{BTreeIndexMultiMap, Comparable};
 use core::fmt;
@@ -156,6 +156,18 @@ impl JsonObject {
 			code_map,
 			offset: offset + 1,
 		}
+	}
+
+	pub fn iter_sorted(&self) -> IterSorted<'_> {
+		self.map.iter_sorted()
+	}
+
+	pub fn iter_mut_sorted(&mut self) -> IterMutSorted<'_> {
+		self.map.iter_mut_sorted()
+	}
+
+	pub fn into_iter_sorted(self) -> IntoIterSorted {
+		self.map.into_iter_sorted()
 	}
 
 	/// Checks if this object contains the given key.
@@ -771,6 +783,12 @@ pub type IterMut<'a> = btree_indexmap::multi_map::IterMut<'a, Key, JsonValue>;
 
 pub type IntoIter = btree_indexmap::multi_map::IntoIter<Key, JsonValue>;
 
+pub type IterSorted<'a> = btree_indexmap::multi_map::IterSorted<'a, Key, JsonValue>;
+
+pub type IterMutSorted<'a> = btree_indexmap::multi_map::IterMutSorted<'a, Key, JsonValue>;
+
+pub type IntoIterSorted = btree_indexmap::multi_map::IntoIterSorted<Key, JsonValue>;
+
 pub type Get<'a> = btree_indexmap::multi_map::Get<'a, Key, JsonValue>;
 
 pub type GetIndexed<'a> = btree_indexmap::multi_map::GetIndexed<'a, Key, JsonValue>;
@@ -922,7 +940,7 @@ mapped_entries_iter! {
 	}
 }
 
-impl BorrowJsonLexical for JsonObject {}
+impl JsonBorrowLexical for JsonObject {}
 
 impl JsonLexicalPartialEq for JsonObject {
 	fn lexical_eq(&self, other: &Self) -> bool {
@@ -1015,7 +1033,7 @@ impl std::error::Error for DuplicateEntry {}
 
 #[cfg(test)]
 mod tests {
-	use crate::lexical::BorrowJsonLexical;
+	use crate::lexical::JsonBorrowLexical;
 
 	use super::*;
 
@@ -1089,7 +1107,7 @@ mod tests {
 
 	#[test]
 	fn mapped_entries() {
-		use crate::ParseJson;
+		use crate::JsonParse;
 		let (json, code_map) = crate::JsonValue::parse_str(
 			r#"{ "0": [null, null], "1": { "foo": 0, "bar": 1 }, "0": null }"#,
 		)

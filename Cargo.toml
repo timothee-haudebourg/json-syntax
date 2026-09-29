@@ -33,12 +33,13 @@ all-features = true
 [dependencies]
 smallvec = "1.9"
 smallstr = "0.3"
-locspan.path = "/home/work/Documents/Community/Utils/parsing/locspan"
+locspan = "1.0"
 lexical = { version = "7.0.1", features = [ "format" ] }
 decoded-char = "0.1"
 btree-indexmap = "1.4"
-utf8-decode = "1.0.1"
+utf8-decode = "2.0"
 into-owned-trait = "1.0"
+str-newtype = "3.0"
 
 # Canonicalization.
 ryu-js = { version = "0.2.2", optional = true }

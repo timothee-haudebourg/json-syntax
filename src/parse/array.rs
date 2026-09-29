@@ -1,4 +1,4 @@
-use super::{Context, Error, ParseJson, Parser};
+use super::{JsonParse, JsonParseError, JsonParsingContext, Parser};
 use decoded_char::DecodedChar;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -7,11 +7,11 @@ pub enum StartFragment {
 	NonEmpty,
 }
 
-impl ParseJson for StartFragment {
+impl JsonParse for StartFragment {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
-		_context: Context,
-	) -> Result<(Self, usize), Error<E>>
+		_context: JsonParsingContext,
+	) -> Result<(Self, usize), JsonParseError<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -32,7 +32,7 @@ impl ParseJson for StartFragment {
 					}
 				}
 			}
-			(p, unexpected) => Err(Error::unexpected(p, unexpected)),
+			(p, unexpected) => Err(JsonParseError::unexpected(p, unexpected)),
 		}
 	}
 }
@@ -44,7 +44,10 @@ pub enum ContinueFragment {
 }
 
 impl ContinueFragment {
-	pub fn parse_in<C, E>(parser: &mut Parser<C, E>, array: usize) -> Result<Self, Error<E>>
+	pub fn parse_in<C, E>(
+		parser: &mut Parser<C, E>,
+		array: usize,
+	) -> Result<Self, JsonParseError<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -55,7 +58,7 @@ impl ContinueFragment {
 				parser.end_fragment(array);
 				Ok(Self::End)
 			}
-			(p, unexpected) => Err(Error::unexpected(p, unexpected)),
+			(p, unexpected) => Err(JsonParseError::unexpected(p, unexpected)),
 		}
 	}
 }

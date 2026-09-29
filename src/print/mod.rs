@@ -1,11 +1,11 @@
 use core::fmt;
-use printer::Printer;
-use sizes::SizesVisitor;
+use printer::JsonPrinter;
+use sizes::JsonSizesVisitor;
 
-use crate::visitor::VisitJson;
+use crate::visitor::JsonVisit;
 
 mod printer;
-mod sizes;
+pub(crate) mod sizes;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum Indent {
@@ -104,7 +104,7 @@ pub enum Limit {
 /// Print options.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[non_exhaustive]
-pub struct Options {
+pub struct JsonPrintOptions {
 	/// Indentation string.
 	pub indent: Indent,
 
@@ -151,121 +151,122 @@ pub struct Options {
 	pub object_limit: Option<Limit>,
 }
 
-impl Options {
+impl JsonPrintOptions {
 	/// Pretty print options.
-	#[inline(always)]
-	pub fn pretty() -> Self {
-		Self {
-			indent: Indent::Spaces(2),
-			array_begin: 1,
-			array_end: 1,
-			array_empty: 0,
-			array_before_comma: 0,
-			array_after_comma: 1,
-			array_limit: Some(Limit::ItemOrWidth(1, 16)),
-			object_begin: 1,
-			object_end: 1,
-			object_empty: 0,
-			object_before_comma: 0,
-			object_after_comma: 1,
-			object_before_colon: 0,
-			object_after_colon: 1,
-			object_limit: Some(Limit::ItemOrWidth(1, 16)),
-		}
-	}
+	pub const PRETTY: Self = Self {
+		indent: Indent::Spaces(2),
+		array_begin: 1,
+		array_end: 1,
+		array_empty: 0,
+		array_before_comma: 0,
+		array_after_comma: 1,
+		array_limit: Some(Limit::ItemOrWidth(1, 16)),
+		object_begin: 1,
+		object_end: 1,
+		object_empty: 0,
+		object_before_comma: 0,
+		object_after_comma: 1,
+		object_before_colon: 0,
+		object_after_colon: 1,
+		object_limit: Some(Limit::ItemOrWidth(1, 16)),
+	};
 
 	/// Compact print options.
 	///
 	/// Values will be formatted on a single line without spaces.
-	#[inline(always)]
-	pub fn compact() -> Self {
-		Self {
-			indent: Indent::Spaces(0),
-			array_begin: 0,
-			array_end: 0,
-			array_empty: 0,
-			array_before_comma: 0,
-			array_after_comma: 0,
-			array_limit: None,
-			object_begin: 0,
-			object_end: 0,
-			object_empty: 0,
-			object_before_comma: 0,
-			object_after_comma: 0,
-			object_before_colon: 0,
-			object_after_colon: 0,
-			object_limit: None,
-		}
-	}
+	pub const COMPACT: Self = Self {
+		indent: Indent::Spaces(0),
+		array_begin: 0,
+		array_end: 0,
+		array_empty: 0,
+		array_before_comma: 0,
+		array_after_comma: 0,
+		array_limit: None,
+		object_begin: 0,
+		object_end: 0,
+		object_empty: 0,
+		object_before_comma: 0,
+		object_after_comma: 0,
+		object_before_colon: 0,
+		object_after_colon: 0,
+		object_limit: None,
+	};
 
 	/// Inline print options.
 	///
 	/// Values will be formatted on a single line with some spaces.
-	#[inline(always)]
-	pub fn inline() -> Self {
-		Self {
-			indent: Indent::Spaces(0),
-			array_begin: 1,
-			array_end: 1,
-			array_empty: 0,
-			array_before_comma: 0,
-			array_after_comma: 1,
-			array_limit: None,
-			object_begin: 1,
-			object_end: 1,
-			object_empty: 0,
-			object_before_comma: 0,
-			object_after_comma: 1,
-			object_before_colon: 0,
-			object_after_colon: 1,
-			object_limit: None,
-		}
-	}
+	pub const INLINE: Self = Self {
+		indent: Indent::Spaces(0),
+		array_begin: 1,
+		array_end: 1,
+		array_empty: 0,
+		array_before_comma: 0,
+		array_after_comma: 1,
+		array_limit: None,
+		object_begin: 1,
+		object_end: 1,
+		object_empty: 0,
+		object_before_comma: 0,
+		object_after_comma: 1,
+		object_before_colon: 0,
+		object_after_colon: 1,
+		object_limit: None,
+	};
 }
 
 /// Print methods.
-pub trait PrintJson {
+pub trait JsonPrint {
 	/// Print the value with `Options::pretty` options.
 	#[inline(always)]
-	fn pretty_print(&self) -> Printed<'_, Self> {
-		self.print_with(Options::pretty())
+	fn pretty_print(&self) -> Printed<'_, 'static, Self> {
+		self.print_with(&JsonPrintOptions::PRETTY)
 	}
 
 	/// Print the value with `Options::compact` options.
 	#[inline(always)]
-	fn compact_print(&self) -> Printed<'_, Self> {
-		self.print_with(Options::compact())
+	fn compact_print(&self) -> Printed<'_, 'static, Self> {
+		self.print_with(&JsonPrintOptions::COMPACT)
 	}
 
 	/// Print the value with `Options::inline` options.
 	#[inline(always)]
-	fn inline_print(&self) -> Printed<'_, Self> {
-		self.print_with(Options::inline())
+	fn inline_print(&self) -> Printed<'_, 'static, Self> {
+		self.print_with(&JsonPrintOptions::INLINE)
 	}
 
 	/// Print the value with the given options.
 	#[inline(always)]
-	fn print_with(&self, options: Options) -> Printed<'_, Self> {
+	fn print_with<'o>(&self, options: &'o JsonPrintOptions) -> Printed<'_, 'o, Self> {
 		Printed(self, options, 0)
 	}
 
-	fn fmt_with(&self, f: &mut fmt::Formatter, options: &Options, indent: usize) -> fmt::Result;
+	fn fmt_with(
+		&self,
+		f: &mut fmt::Formatter,
+		options: &JsonPrintOptions,
+		indent: usize,
+	) -> fmt::Result;
 }
 
-impl<T: VisitJson> PrintJson for T {
-	fn fmt_with(&self, f: &mut fmt::Formatter, options: &Options, indent: usize) -> fmt::Result {
+impl<T: JsonVisit> JsonPrint for T {
+	fn fmt_with(
+		&self,
+		f: &mut fmt::Formatter,
+		options: &JsonPrintOptions,
+		indent: usize,
+	) -> fmt::Result {
 		let mut sizes = Vec::new();
-		self.visit(SizesVisitor::new(options, &mut sizes));
+		self.visit(JsonSizesVisitor::new(options, &mut sizes));
 		let mut offset = 0;
-		self.visit(Printer::new(options, &sizes, &mut offset, indent, f))
+		self.visit(JsonPrinter::new(options, &sizes, &mut offset, indent, f))
 	}
 }
 
 /// Printed value.
-pub struct Printed<'t, T: ?Sized>(&'t T, Options, usize);
+pub struct Printed<'t, 'o, T: ?Sized>(&'t T, &'o JsonPrintOptions, usize);
 
-impl<T: PrintJson> fmt::Display for Printed<'_, T> {
+impl<T: JsonPrint> fmt::Display for Printed<'_, '_, T> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		self.0.fmt_with(f, &self.1, self.2)
+		self.0.fmt_with(f, self.1, self.2)
 	}
 }

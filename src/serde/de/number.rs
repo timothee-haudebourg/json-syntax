@@ -1,42 +1,42 @@
-use crate::{InvalidJsonNumber, JsonBytes, JsonNumber, JsonNumberBuf, serde::NUMBER_TOKEN};
+use crate::{JsonNumber, JsonNumberBuf, serde::NUMBER_TOKEN};
 use de::{Deserialize, Deserializer};
 use serde::{
 	de::{self, value::StrDeserializer},
 	forward_to_deserialize_any,
 };
-use std::{fmt, marker::PhantomData};
+use std::fmt;
 
-impl<'de, B: JsonBytes> Deserialize<'de> for JsonNumberBuf<B> {
+impl<'de> Deserialize<'de> for JsonNumberBuf {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: Deserializer<'de>,
 	{
-		deserializer.deserialize_any(JsonNumberVisitor(PhantomData))
+		deserializer.deserialize_any(JsonNumberVisitor)
 	}
 }
 
 /// Number visitor.
-pub struct JsonNumberVisitor<B>(PhantomData<B>);
+pub struct JsonNumberVisitor;
 
-impl<'de, B: JsonBytes> de::Visitor<'de> for JsonNumberVisitor<B> {
-	type Value = JsonNumberBuf<B>;
+impl<'de> de::Visitor<'de> for JsonNumberVisitor {
+	type Value = JsonNumberBuf;
 
 	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 		formatter.write_str("JSON number")
 	}
 
 	#[inline]
-	fn visit_u64<E: de::Error>(self, value: u64) -> Result<JsonNumberBuf<B>, E> {
+	fn visit_u64<E: de::Error>(self, value: u64) -> Result<JsonNumberBuf, E> {
 		Ok(value.into())
 	}
 
 	#[inline]
-	fn visit_i64<E: de::Error>(self, value: i64) -> Result<JsonNumberBuf<B>, E> {
+	fn visit_i64<E: de::Error>(self, value: i64) -> Result<JsonNumberBuf, E> {
 		Ok(value.into())
 	}
 
 	#[inline]
-	fn visit_f64<E: de::Error>(self, value: f64) -> Result<JsonNumberBuf<B>, E> {
+	fn visit_f64<E: de::Error>(self, value: f64) -> Result<JsonNumberBuf, E> {
 		JsonNumberBuf::try_from(value)
 			.map_err(|_| E::invalid_value(de::Unexpected::Float(value), &self))
 	}
@@ -77,17 +77,17 @@ impl<'de, B: JsonBytes> de::Visitor<'de> for JsonNumberVisitor<B> {
 			}
 		}
 
-		struct Value<B>(JsonNumberBuf<B>);
+		struct Value(JsonNumberBuf);
 
-		impl<'de, B: JsonBytes> Deserialize<'de> for Value<B> {
+		impl<'de> Deserialize<'de> for Value {
 			fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 			where
 				D: Deserializer<'de>,
 			{
-				struct ValueVisitor<B>(PhantomData<B>);
+				struct ValueVisitor;
 
-				impl<'de, B: JsonBytes> de::Visitor<'de> for ValueVisitor<B> {
-					type Value = Value<B>;
+				impl<'de> de::Visitor<'de> for ValueVisitor {
+					type Value = Value;
 
 					fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 						formatter.write_str("string containing a JSON number")
@@ -104,24 +104,20 @@ impl<'de, B: JsonBytes> de::Visitor<'de> for JsonNumberVisitor<B> {
 					where
 						E: de::Error,
 					{
-						match JsonNumberBuf::new(B::from_vec(v.into_bytes())) {
+						match JsonNumberBuf::new(v) {
 							Ok(v) => Ok(Value(v)),
-							Err(InvalidJsonNumber(bytes)) => {
-								Err(de::Error::custom(InvalidJsonNumber(
-									String::from_utf8(bytes.as_ref().to_owned()).unwrap(),
-								)))
-							}
+							Err(e) => Err(de::Error::custom(e)),
 						}
 					}
 				}
 
-				deserializer.deserialize_identifier(ValueVisitor(PhantomData))
+				deserializer.deserialize_identifier(ValueVisitor)
 			}
 		}
 
 		match map.next_key()? {
 			Some(Key) => {
-				let value: Value<B> = map.next_value()?;
+				let value: Value = map.next_value()?;
 				Ok(value.0)
 			}
 			None => Err(de::Error::invalid_type(de::Unexpected::Map, &self)),
@@ -158,7 +154,7 @@ impl de::Error for Unexpected {
 	}
 }
 
-impl<'de, B: JsonBytes> Deserializer<'de> for JsonNumberBuf<B> {
+impl<'de> Deserializer<'de> for JsonNumberBuf {
 	type Error = Unexpected;
 
 	#[inline(always)]
@@ -176,7 +172,7 @@ impl<'de, B: JsonBytes> Deserializer<'de> for JsonNumberBuf<B> {
 	}
 }
 
-impl<'de, B: JsonBytes> Deserializer<'de> for &JsonNumberBuf<B> {
+impl<'de> Deserializer<'de> for &JsonNumberBuf {
 	type Error = Unexpected;
 
 	#[inline(always)]

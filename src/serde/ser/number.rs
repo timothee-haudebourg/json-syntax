@@ -1,4 +1,4 @@
-use crate::{JsonBytes, JsonNumber, JsonNumberBuf, serde::NUMBER_TOKEN};
+use crate::{JsonNumber, JsonNumberBuf, serde::NUMBER_TOKEN};
 use ser::{Serialize, Serializer};
 use serde::ser;
 
@@ -21,7 +21,7 @@ impl Serialize for JsonNumber {
 	}
 }
 
-impl<B: JsonBytes> Serialize for JsonNumberBuf<B> {
+impl Serialize for JsonNumberBuf {
 	#[inline]
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where

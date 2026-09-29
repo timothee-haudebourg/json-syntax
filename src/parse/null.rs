@@ -1,11 +1,11 @@
-use super::{Context, Error, ParseJson, Parser};
+use super::{JsonParse, JsonParseError, JsonParsingContext, Parser};
 use decoded_char::DecodedChar;
 
-impl ParseJson for () {
+impl JsonParse for () {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
-		_context: Context,
-	) -> Result<(Self, usize), Error<E>>
+		_context: JsonParsingContext,
+	) -> Result<(Self, usize), JsonParseError<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -18,13 +18,13 @@ impl ParseJson for () {
 							parser.end_fragment(i);
 							Ok(((), i))
 						}
-						(p, unexpected) => Err(Error::unexpected(p, unexpected)),
+						(p, unexpected) => Err(JsonParseError::unexpected(p, unexpected)),
 					},
-					(p, unexpected) => Err(Error::unexpected(p, unexpected)),
+					(p, unexpected) => Err(JsonParseError::unexpected(p, unexpected)),
 				},
-				(p, unexpected) => Err(Error::unexpected(p, unexpected)),
+				(p, unexpected) => Err(JsonParseError::unexpected(p, unexpected)),
 			},
-			(p, unexpected) => Err(Error::unexpected(p, unexpected)),
+			(p, unexpected) => Err(JsonParseError::unexpected(p, unexpected)),
 		}
 	}
 }

@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::{JsonValue, ParseJson};
+use crate::{JsonParse, JsonValue};
 use serde::{
 	Serialize,
 	de::{DeserializeOwned, Error},

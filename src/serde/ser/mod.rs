@@ -364,8 +364,7 @@ impl serde::Serializer for StringNumberSerializer {
 	}
 
 	fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-		JsonNumberBuf::new(v.as_bytes().into())
-			.map_err(|_| SerializeError::MalformedHighPrecisionNumber)
+		JsonNumberBuf::new(v.to_owned()).map_err(|_| SerializeError::MalformedHighPrecisionNumber)
 	}
 
 	fn serialize_bytes(self, _v: &[u8]) -> Result<Self::Ok, Self::Error> {

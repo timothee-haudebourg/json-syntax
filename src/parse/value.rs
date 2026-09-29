@@ -1,4 +1,4 @@
-use super::{Context, Error, ParseJson, Parser, array, object};
+use super::{JsonParse, JsonParseError, JsonParsingContext, Parser, array, object};
 use crate::{JsonArrayBuf, JsonNumberBuf, JsonObject, JsonString, JsonValue, object::Key};
 use decoded_char::DecodedChar;
 
@@ -14,8 +14,8 @@ impl Fragment {
 	fn value_or_parse<C, E>(
 		value: Option<(JsonValue, usize)>,
 		parser: &mut Parser<C, E>,
-		context: Context,
-	) -> Result<(Self, usize), Error<E>>
+		context: JsonParsingContext,
+	) -> Result<(Self, usize), JsonParseError<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -32,11 +32,11 @@ impl From<JsonValue> for Fragment {
 	}
 }
 
-impl ParseJson for Fragment {
+impl JsonParse for Fragment {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
-		context: Context,
-	) -> Result<(Self, usize), Error<E>>
+		context: JsonParsingContext,
+	) -> Result<(Self, usize), JsonParseError<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -73,18 +73,18 @@ impl ParseJson for Fragment {
 					return Ok((Self::BeginObject(key), span));
 				}
 			},
-			unexpected => return Err(Error::unexpected(parser.position, unexpected)),
+			unexpected => return Err(JsonParseError::unexpected(parser.position, unexpected)),
 		};
 
 		Ok((Self::Value(value), i))
 	}
 }
 
-impl ParseJson for JsonValue {
+impl JsonParse for JsonValue {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
-		context: Context,
-	) -> Result<(Self, usize), Error<E>>
+		context: JsonParsingContext,
+	) -> Result<(Self, usize), JsonParseError<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -98,11 +98,11 @@ impl ParseJson for JsonValue {
 		let mut stack: Vec<StackItem> = vec![];
 		let mut value: Option<(JsonValue, usize)> = None;
 
-		fn stack_context(stack: &[StackItem], root: Context) -> Context {
+		fn stack_context(stack: &[StackItem], root: JsonParsingContext) -> JsonParsingContext {
 			match stack.last() {
-				Some(StackItem::Array(_) | StackItem::ArrayItem(_)) => Context::Array,
-				Some(StackItem::Object(_)) => Context::ObjectKey,
-				Some(StackItem::ObjectEntry(_, _)) => Context::ObjectValue,
+				Some(StackItem::Array(_) | StackItem::ArrayItem(_)) => JsonParsingContext::Array,
+				Some(StackItem::Object(_)) => JsonParsingContext::ObjectKey,
+				Some(StackItem::ObjectEntry(_, _)) => JsonParsingContext::ObjectValue,
 				None => root,
 			}
 		}
@@ -117,7 +117,7 @@ impl ParseJson for JsonValue {
 					(Fragment::Value(value), i) => {
 						parser.skip_whitespaces()?;
 						break match parser.next_char()? {
-							(p, Some(c)) => Err(Error::unexpected(p, Some(c))),
+							(p, Some(c)) => Err(JsonParseError::unexpected(p, Some(c))),
 							(_, None) => Ok((value, i)),
 						};
 					}
@@ -137,7 +137,8 @@ impl ParseJson for JsonValue {
 					}
 				}
 				Some(StackItem::ArrayItem((mut array, i))) => {
-					match Fragment::value_or_parse(value.take(), parser, Context::Array)? {
+					match Fragment::value_or_parse(value.take(), parser, JsonParsingContext::Array)?
+					{
 						(Fragment::Value(value), _) => {
 							array.push(value);
 							stack.push(StackItem::Array((array, i)));
@@ -163,7 +164,11 @@ impl ParseJson for JsonValue {
 					}
 				}
 				Some(StackItem::ObjectEntry((mut object, i), (key, e))) => {
-					match Fragment::value_or_parse(value.take(), parser, Context::ObjectValue)? {
+					match Fragment::value_or_parse(
+						value.take(),
+						parser,
+						JsonParsingContext::ObjectValue,
+					)? {
 						(Fragment::Value(value), _) => {
 							parser.end_fragment(e);
 							object.push_back(key, value);

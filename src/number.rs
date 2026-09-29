@@ -1,21 +1,23 @@
 use std::borrow::{Borrow, ToOwned};
 use std::fmt;
+use std::hash::Hash;
 use std::ops::Deref;
 use std::str::FromStr;
 
 use smallvec::SmallVec;
+use str_newtype::Buffer;
 
-use crate::{JsonBytes, lexical::BorrowJsonLexical};
+use crate::lexical::JsonBorrowLexical;
 
-pub const DEFAULT_STACK_CAPACITY: usize = 8;
+pub const JSON_NUMBER_RAW_BUFFER_CAPACITY: usize = 8;
 
-pub type DefaultBuffer = SmallVec<[u8; DEFAULT_STACK_CAPACITY]>;
+pub type JsonNumberRawBuffer = SmallVec<[u8; JSON_NUMBER_RAW_BUFFER_CAPACITY]>;
 
 /// Invalid number error.
 ///
 /// The inner value is the data failed to be parsed.
 #[derive(Clone, Copy, Debug)]
-pub struct InvalidJsonNumber<T = DefaultBuffer>(pub T);
+pub struct InvalidJsonNumber<T = String>(pub T);
 
 impl<T: fmt::Display> fmt::Display for InvalidJsonNumber<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -77,9 +79,26 @@ pub struct JsonNumber {
 
 impl JsonNumber {
 	/// Creates a new number by parsing the given input `data`.
-	pub fn new<B: AsRef<[u8]> + ?Sized>(data: &B) -> Result<&JsonNumber, InvalidJsonNumber<&B>> {
+	pub fn new<B: AsRef<[u8]> + ?Sized>(data: &B) -> Result<&Self, InvalidJsonNumber<&B>> {
 		let s = data.as_ref();
+		if Self::validate_bytes(s) {
+			Ok(unsafe { Self::new_unchecked(s) })
+		} else {
+			Err(InvalidJsonNumber(data))
+		}
+	}
 
+	/// Creates a new number without parsing the given input `data`.
+	///
+	/// ## Safety
+	///
+	/// The `data` input **must** be a valid JSON number.
+	#[inline(always)]
+	pub unsafe fn new_unchecked<B: AsRef<[u8]> + ?Sized>(data: &B) -> &JsonNumber {
+		unsafe { std::mem::transmute(data.as_ref()) }
+	}
+
+	pub fn validate_bytes(s: &[u8]) -> bool {
 		enum State {
 			Init,
 			FirstDigit,
@@ -100,67 +119,53 @@ impl JsonNumber {
 					b'-' => state = State::FirstDigit,
 					b'0' => state = State::Zero,
 					b'1'..=b'9' => state = State::NonZero,
-					_ => return Err(InvalidJsonNumber(data)),
+					_ => return false,
 				},
 				State::FirstDigit => match *b {
 					b'0' => state = State::Zero,
 					b'1'..=b'9' => state = State::NonZero,
-					_ => return Err(InvalidJsonNumber(data)),
+					_ => return false,
 				},
 				State::Zero => match *b {
 					b'.' => state = State::FractionalFirst,
 					b'e' | b'E' => state = State::ExponentSign,
-					_ => return Err(InvalidJsonNumber(data)),
+					_ => return false,
 				},
 				State::NonZero => match *b {
 					b'0'..=b'9' => state = State::NonZero,
 					b'.' => state = State::FractionalFirst,
 					b'e' | b'E' => state = State::ExponentSign,
-					_ => return Err(InvalidJsonNumber(data)),
+					_ => return false,
 				},
 				State::FractionalFirst => match *b {
 					b'0'..=b'9' => state = State::FractionalRest,
-					_ => return Err(InvalidJsonNumber(data)),
+					_ => return false,
 				},
 				State::FractionalRest => match *b {
 					b'0'..=b'9' => state = State::FractionalRest,
 					b'e' | b'E' => state = State::ExponentSign,
-					_ => return Err(InvalidJsonNumber(data)),
+					_ => return false,
 				},
 				State::ExponentSign => match *b {
 					b'+' | b'-' => state = State::ExponentFirst,
 					b'0'..=b'9' => state = State::ExponentRest,
-					_ => return Err(InvalidJsonNumber(data)),
+					_ => return false,
 				},
 				State::ExponentFirst => match *b {
 					b'0'..=b'9' => state = State::ExponentRest,
-					_ => return Err(InvalidJsonNumber(data)),
+					_ => return false,
 				},
 				State::ExponentRest => match *b {
 					b'0'..=b'9' => state = State::ExponentRest,
-					_ => return Err(InvalidJsonNumber(data)),
+					_ => return false,
 				},
 			}
 		}
 
-		if matches!(
+		matches!(
 			state,
 			State::Zero | State::NonZero | State::FractionalRest | State::ExponentRest
-		) {
-			Ok(unsafe { Self::new_unchecked(s) })
-		} else {
-			Err(InvalidJsonNumber(data))
-		}
-	}
-
-	/// Creates a new number without parsing the given input `data`.
-	///
-	/// ## Safety
-	///
-	/// The `data` input **must** be a valid JSON number.
-	#[inline(always)]
-	pub unsafe fn new_unchecked<B: AsRef<[u8]> + ?Sized>(data: &B) -> &JsonNumber {
-		unsafe { std::mem::transmute(data.as_ref()) }
+		)
 	}
 
 	#[inline(always)]
@@ -401,10 +406,6 @@ impl JsonNumber {
 		if n.as_number() == self { Some(f) } else { None }
 	}
 
-	pub fn to_custom_owned<B: JsonBytes>(&self) -> JsonNumberBuf<B> {
-		unsafe { JsonNumberBuf::new_unchecked(B::from_bytes(self.as_bytes())) }
-	}
-
 	/// Returns the canonical representation of this number according to
 	/// [RFC8785](https://www.rfc-editor.org/rfc/rfc8785#name-serialization-of-numbers).
 	#[cfg(feature = "canonicalize")]
@@ -425,29 +426,11 @@ impl JsonNumber {
 		let mut buffer = ryu_js::Buffer::new();
 		self.canonicalized_with(&mut buffer).to_owned()
 	}
-
-	/// Returns the canonical representation of this number according to
-	/// [RFC8785](https://www.rfc-editor.org/rfc/rfc8785#name-serialization-of-numbers).
-	#[cfg(feature = "canonicalize")]
-	pub fn custom_canonicalized_with<B: JsonBytes>(
-		&self,
-		buffer: &mut ryu_js::Buffer,
-	) -> JsonNumberBuf<B> {
-		self.canonicalized_with(buffer).to_custom_owned()
-	}
-
-	/// Returns the canonical representation of this number according to
-	/// [RFC8785](https://www.rfc-editor.org/rfc/rfc8785#name-serialization-of-numbers).
-	#[cfg(feature = "canonicalize")]
-	pub fn custom_canonicalized<B: JsonBytes>(&self) -> JsonNumberBuf<B> {
-		let mut buffer = ryu_js::Buffer::new();
-		self.custom_canonicalized_with(&mut buffer)
-	}
 }
 
-impl BorrowJsonLexical for JsonNumber {}
+impl JsonBorrowLexical for JsonNumber {}
 
-impl<T> BorrowJsonLexical for JsonNumberBuf<T> {}
+impl JsonBorrowLexical for JsonNumberBuf {}
 
 const LOSSY_PARSE_FLOAT: lexical::ParseFloatOptions = lexical::ParseFloatOptions::builder()
 	.lossy(true)
@@ -496,7 +479,7 @@ impl ToOwned for JsonNumber {
 	type Owned = JsonNumberBuf;
 
 	fn to_owned(&self) -> Self::Owned {
-		self.to_custom_owned()
+		unsafe { JsonNumberBuf::new_unchecked(self.as_bytes().into()) }
 	}
 }
 
@@ -515,20 +498,19 @@ impl fmt::Debug for JsonNumber {
 }
 
 /// JSON number buffer.
-#[derive(Clone, Hash)]
-pub struct JsonNumberBuf<B = DefaultBuffer> {
-	data: B,
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct JsonNumberBuf {
+	data: JsonNumberRawBuffer,
 }
 
-impl<B> JsonNumberBuf<B> {
+impl JsonNumberBuf {
 	/// Creates a new number buffer by parsing the given input `data` buffer.
 	#[inline(always)]
-	pub fn new(data: B) -> Result<Self, InvalidJsonNumber<B>>
-	where
-		B: AsRef<[u8]>,
-	{
-		match JsonNumber::new(&data) {
-			Ok(_) => Ok(JsonNumberBuf { data }),
+	pub fn new<T: Buffer>(data: T) -> Result<Self, InvalidJsonNumber<T>> {
+		match JsonNumber::new(data.as_bytes()) {
+			Ok(_) => Ok(JsonNumberBuf {
+				data: data.into_bytes().into(),
+			}),
 			Err(_) => Err(InvalidJsonNumber(data)),
 		}
 	}
@@ -539,103 +521,72 @@ impl<B> JsonNumberBuf<B> {
 	///
 	/// The input `data` **must** hold a valid JSON number string.
 	#[inline(always)]
-	pub unsafe fn new_unchecked(data: B) -> Self {
+	pub unsafe fn new_unchecked(data: JsonNumberRawBuffer) -> Self {
 		JsonNumberBuf { data }
 	}
 
 	/// Creates a number buffer from the given `number`.
 	#[inline(always)]
-	pub fn from_number(n: &JsonNumber) -> Self
-	where
-		B: FromIterator<u8>,
-	{
-		unsafe { JsonNumberBuf::new_unchecked(n.bytes().collect()) }
+	pub fn from_number(n: &JsonNumber) -> Self {
+		unsafe { JsonNumberBuf::new_unchecked(n.as_bytes().into()) }
 	}
 
 	#[inline(always)]
-	pub fn as_buffer(&self) -> &B {
+	pub fn as_raw_buffer(&self) -> &JsonNumberRawBuffer {
 		&self.data
 	}
 
 	#[inline(always)]
-	pub fn into_buffer(self) -> B {
+	pub fn into_raw_buffer(self) -> JsonNumberRawBuffer {
 		self.data
 	}
 }
 
-impl<B: JsonBytes> JsonNumberBuf<B> {
+impl JsonNumberBuf {
 	/// Puts this number in canonical form according to
 	/// [RFC8785](https://www.rfc-editor.org/rfc/rfc8785#name-serialization-of-numbers).
 	#[cfg(feature = "canonicalize")]
 	pub fn canonicalize(&mut self) {
-		*self = self.custom_canonicalized();
+		*self = self.canonicalized();
 	}
 
 	/// Puts this number in canonical form according to
 	/// [RFC8785](https://www.rfc-editor.org/rfc/rfc8785#name-serialization-of-numbers).
 	#[cfg(feature = "canonicalize")]
 	pub fn canonicalize_with(&mut self, buffer: &mut ryu_js::Buffer) {
-		*self = self.custom_canonicalized_with(buffer)
+		*self = self.canonicalized_with(buffer).to_owned()
 	}
 }
 
-impl JsonNumberBuf<String> {
+impl JsonNumberBuf {
 	#[inline(always)]
 	pub fn into_string(self) -> String {
-		self.data
+		unsafe { String::from_utf8_unchecked(self.into_bytes()) }
 	}
 
 	#[inline(always)]
 	pub fn into_bytes(self) -> Vec<u8> {
-		self.data.into_bytes()
+		self.data.into_vec()
 	}
 }
 
-impl<B: JsonBytes> JsonNumberBuf<B> {
+impl JsonNumberBuf {
 	#[inline(always)]
 	pub fn as_number(&self) -> &JsonNumber {
 		unsafe { JsonNumber::new_unchecked(&self.data) }
 	}
 }
 
-impl<T, U> PartialEq<JsonNumberBuf<U>> for JsonNumberBuf<T>
-where
-	T: JsonBytes,
-	U: JsonBytes,
-{
-	fn eq(&self, other: &JsonNumberBuf<U>) -> bool {
-		self.as_number() == other.as_number()
-	}
-}
-
-impl<T: JsonBytes> Eq for JsonNumberBuf<T> {}
-
-impl<T, U> PartialOrd<JsonNumberBuf<U>> for JsonNumberBuf<T>
-where
-	T: JsonBytes,
-	U: JsonBytes,
-{
-	fn partial_cmp(&self, other: &JsonNumberBuf<U>) -> Option<std::cmp::Ordering> {
-		self.as_number().partial_cmp(other.as_number())
-	}
-}
-
-impl<T: JsonBytes> Ord for JsonNumberBuf<T> {
-	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-		self.as_number().cmp(other.as_number())
-	}
-}
-
-impl<B: JsonBytes> FromStr for JsonNumberBuf<B> {
-	type Err = InvalidJsonNumber<B>;
+impl FromStr for JsonNumberBuf {
+	type Err = InvalidJsonNumber;
 
 	#[inline(always)]
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		Self::new(B::from_bytes(s.as_bytes()))
+		Self::new(s.to_owned())
 	}
 }
 
-impl<B: JsonBytes> Deref for JsonNumberBuf<B> {
+impl Deref for JsonNumberBuf {
 	type Target = JsonNumber;
 
 	#[inline(always)]
@@ -644,55 +595,41 @@ impl<B: JsonBytes> Deref for JsonNumberBuf<B> {
 	}
 }
 
-impl<B: JsonBytes> AsRef<JsonNumber> for JsonNumberBuf<B> {
+impl AsRef<JsonNumber> for JsonNumberBuf {
 	#[inline(always)]
 	fn as_ref(&self) -> &JsonNumber {
 		self.as_number()
 	}
 }
 
-impl<B: JsonBytes> Borrow<JsonNumber> for JsonNumberBuf<B> {
+impl Borrow<JsonNumber> for JsonNumberBuf {
 	#[inline(always)]
 	fn borrow(&self) -> &JsonNumber {
 		self.as_number()
 	}
 }
 
-impl<B: JsonBytes> AsRef<str> for JsonNumberBuf<B> {
+impl AsRef<str> for JsonNumberBuf {
 	#[inline(always)]
 	fn as_ref(&self) -> &str {
 		self.as_str()
 	}
 }
 
-impl<B: JsonBytes> Borrow<str> for JsonNumberBuf<B> {
-	#[inline(always)]
-	fn borrow(&self) -> &str {
-		self.as_str()
-	}
-}
-
-impl<B: JsonBytes> AsRef<[u8]> for JsonNumberBuf<B> {
+impl AsRef<[u8]> for JsonNumberBuf {
 	#[inline(always)]
 	fn as_ref(&self) -> &[u8] {
 		self.as_bytes()
 	}
 }
 
-impl<B: JsonBytes> Borrow<[u8]> for JsonNumberBuf<B> {
-	#[inline(always)]
-	fn borrow(&self) -> &[u8] {
-		self.as_bytes()
-	}
-}
-
-impl<B: JsonBytes> fmt::Display for JsonNumberBuf<B> {
+impl fmt::Display for JsonNumberBuf {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		self.as_str().fmt(f)
 	}
 }
 
-impl<B: JsonBytes> fmt::Debug for JsonNumberBuf<B> {
+impl fmt::Debug for JsonNumberBuf {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		self.as_str().fmt(f)
 	}
@@ -701,11 +638,11 @@ impl<B: JsonBytes> fmt::Debug for JsonNumberBuf<B> {
 macro_rules! impl_from_int {
 	($($ty:ty),*) => {
 		$(
-			impl<B: JsonBytes> From<$ty> for JsonNumberBuf<B> {
+			impl From<$ty> for JsonNumberBuf {
 				#[inline(always)]
 				fn from(i: $ty) -> Self {
 					unsafe {
-						Self::new_unchecked(B::from_vec(lexical::to_string(i).into_bytes()))
+						Self::new_unchecked(JsonNumberRawBuffer::from_vec(lexical::to_string(i).into_bytes()))
 					}
 				}
 			}
@@ -731,14 +668,14 @@ const WRITE_FLOAT: lexical::WriteFloatOptions = lexical::WriteFloatOptions::buil
 macro_rules! impl_try_from_float {
 	($($ty:ty),*) => {
 		$(
-			impl<B: JsonBytes> TryFrom<$ty> for JsonNumberBuf<B> {
+			impl TryFrom<$ty> for JsonNumberBuf {
 				type Error = TryFromFloatError;
 
 				#[inline(always)]
 				fn try_from(f: $ty) -> Result<Self, Self::Error> {
 					if f.is_finite() {
 						Ok(unsafe {
-							Self::new_unchecked(B::from_vec(lexical::to_string_with_options::<_, {lexical::format::JSON}>(f, &WRITE_FLOAT).into_bytes()))
+							Self::new_unchecked(JsonNumberRawBuffer::from_vec(lexical::to_string_with_options::<_, {lexical::format::JSON}>(f, &WRITE_FLOAT).into_bytes()))
 						})
 					} else if f.is_nan() {
 						Err(TryFromFloatError::Nan)

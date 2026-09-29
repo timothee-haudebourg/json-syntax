@@ -1,4 +1,4 @@
-use super::{Context, Error, ParseJson, Parser};
+use super::{JsonParse, JsonParseError, JsonParsingContext, Parser};
 use crate::object::Key;
 use decoded_char::DecodedChar;
 
@@ -8,11 +8,11 @@ pub enum StartFragment {
 	NonEmpty((Key, usize)),
 }
 
-impl ParseJson for StartFragment {
+impl JsonParse for StartFragment {
 	fn parse_in<C, E>(
 		parser: &mut Parser<C, E>,
-		_context: Context,
-	) -> Result<(Self, usize), Error<E>>
+		_context: JsonParsingContext,
+	) -> Result<(Self, usize), JsonParseError<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -28,16 +28,16 @@ impl ParseJson for StartFragment {
 					}
 					_ => {
 						let e = parser.begin_fragment();
-						let key = Key::parse_in(parser, Context::ObjectKey)?;
+						let key = Key::parse_in(parser, JsonParsingContext::ObjectKey)?;
 						parser.skip_whitespaces()?;
 						match parser.next_char()? {
 							(_, Some(':')) => Ok((Self::NonEmpty((key.0, e)), i)),
-							(p, unexpected) => Err(Error::unexpected(p, unexpected)),
+							(p, unexpected) => Err(JsonParseError::unexpected(p, unexpected)),
 						}
 					}
 				}
 			}
-			(p, unexpected) => Err(Error::unexpected(p, unexpected)),
+			(p, unexpected) => Err(JsonParseError::unexpected(p, unexpected)),
 		}
 	}
 }
@@ -49,7 +49,10 @@ pub enum ContinueFragment {
 }
 
 impl ContinueFragment {
-	pub fn parse_in<C, E>(parser: &mut Parser<C, E>, object: usize) -> Result<Self, Error<E>>
+	pub fn parse_in<C, E>(
+		parser: &mut Parser<C, E>,
+		object: usize,
+	) -> Result<Self, JsonParseError<E>>
 	where
 		C: Iterator<Item = Result<DecodedChar, E>>,
 	{
@@ -58,18 +61,18 @@ impl ContinueFragment {
 			(_, Some(',')) => {
 				parser.skip_whitespaces()?;
 				let e = parser.begin_fragment();
-				let key = Key::parse_in(parser, Context::ObjectKey)?;
+				let key = Key::parse_in(parser, JsonParsingContext::ObjectKey)?;
 				parser.skip_whitespaces()?;
 				match parser.next_char()? {
 					(_, Some(':')) => Ok(Self::Entry((key.0, e))),
-					(p, unexpected) => Err(Error::unexpected(p, unexpected)),
+					(p, unexpected) => Err(JsonParseError::unexpected(p, unexpected)),
 				}
 			}
 			(_, Some('}')) => {
 				parser.end_fragment(object);
 				Ok(Self::End)
 			}
-			(p, unexpected) => Err(Error::unexpected(p, unexpected)),
+			(p, unexpected) => Err(JsonParseError::unexpected(p, unexpected)),
 		}
 	}
 }

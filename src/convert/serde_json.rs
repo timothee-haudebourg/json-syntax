@@ -1,4 +1,4 @@
-use crate::{JsonBytes, JsonNumber, JsonNumberBuf, JsonValue};
+use crate::{JsonNumber, JsonNumberBuf, JsonValue};
 
 impl JsonValue {
 	/// Converts a [`serde_json::Value`] into a `Value`.
@@ -83,18 +83,18 @@ impl From<JsonValue> for serde_json::Value {
 	}
 }
 
-impl<B: JsonBytes> From<serde_json::Number> for JsonNumberBuf<B> {
+impl From<serde_json::Number> for JsonNumberBuf {
 	#[inline(always)]
 	fn from(n: serde_json::Number) -> Self {
-		JsonNumberBuf::new(B::from_vec(n.to_string().into_bytes()))
+		JsonNumberBuf::new(n.to_string())
 			.ok()
 			.expect("invalid `serde_json::Number`")
 	}
 }
 
-impl<B: JsonBytes> From<JsonNumberBuf<B>> for serde_json::Number {
+impl From<JsonNumberBuf> for serde_json::Number {
 	#[inline(always)]
-	fn from(n: JsonNumberBuf<B>) -> Self {
+	fn from(n: JsonNumberBuf) -> Self {
 		Self::from(n.as_number())
 	}
 }
