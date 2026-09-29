@@ -6,6 +6,8 @@ impl JsonValue {
 	/// # Example
 	///
 	/// ```
+	/// use json_syntax::JsonValue;
+	///
 	/// // First we create a `serde_json` value.
 	/// let a = serde_json::json!({
 	///   "foo": 1,
@@ -40,6 +42,8 @@ impl JsonValue {
 	/// # Example
 	///
 	/// ```
+	/// use json_syntax::JsonValue;
+	///
 	/// // First we create a `serde_json` value.
 	/// let a = serde_json::json!({
 	///   "foo": 1,
